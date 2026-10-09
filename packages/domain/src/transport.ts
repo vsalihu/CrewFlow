@@ -606,6 +606,8 @@ export async function publishTrip(ctx: ServiceContext, tripId: string, expectedV
     const leg = trip.legType === 'return' ? 'return' : trip.legType === 'outbound' ? 'outbound' : null;
     if (leg) {
       const ps = await tx.select({ assignmentId: tripPassengers.assignmentId }).from(tripPassengers).where(eq(tripPassengers.tripRevisionId, rev.id));
+      // The driver's own shift is covered by the journey they drive.
+      if (rev.driverOwnAssignmentId) ps.push({ assignmentId: rev.driverOwnAssignmentId });
       for (const p of ps) {
         if (!p.assignmentId) continue;
         await tx
@@ -802,4 +804,46 @@ export async function requestReturnPickup(
 export async function listDrivers(ctx: ServiceContext, branchId: string) {
   requireCapability(ctx.actor, 'trip.read', branchId);
   return read(ctx, (tx) => tx.select().from(drivers).where(and(eq(drivers.branchId, branchId), eq(drivers.status, 'active'))).orderBy(asc(drivers.displayName)));
+}
+
+/**
+ * Cancel a journey. Reservations are released and every passenger's leg on this journey
+ * becomes unresolved again, with a task to re-plan. A journey already on the road needs a
+ * dispatcher decision instead.
+ */
+export async function cancelTrip(ctx: ServiceContext, tripId: string, input: { expectedVersion: number; reason: string }): Promise<{ affectedPassengers: number }> {
+  return command(ctx, { operation: 'trip.cancel' }, async (tx) => {
+    const [trip] = await tx.select().from(trips).where(eq(trips.id, tripId)).for('update');
+    if (!trip) throw notFound('Journey');
+    requireCapability(ctx.actor, 'trip.plan', trip.branchId);
+    checkVersion(trip.version, input.expectedVersion);
+    if (trip.state === 'departed') throw new DomainError('INVALID_STATE', 'This journey is travelling: record a disruption and decide what happens to the passengers.');
+    if (['cancelled', 'completed'].includes(trip.state)) throw new DomainError('INVALID_STATE', `This journey is ${trip.state}.`);
+    await tx.update(trips).set({ state: 'cancelled', version: trip.version + 1, updatedAt: nowOf(ctx) }).where(eq(trips.id, trip.id));
+    await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.tripId, trip.id), eq(resourceReservations.active, true)));
+    await tx
+      .update(messageDrafts)
+      .set({ state: 'withdrawn', endedAt: nowOf(ctx), endReason: `Journey cancelled: ${input.reason}`, version: sql`${messageDrafts.version} + 1` })
+      .where(and(eq(messageDrafts.entityType, 'trip'), eq(messageDrafts.entityId, trip.id), inArray(messageDrafts.state, ['draft', 'copied', 'queued'])));
+    const affected = await tx
+      .update(transportRequirements)
+      .set({ mode: 'unresolved', tripId: null, arrangementNote: `Journey ${trip.reference} cancelled: ${input.reason}`, updatedAt: nowOf(ctx) })
+      .where(eq(transportRequirements.tripId, trip.id))
+      .returning({ assignmentId: transportRequirements.assignmentId });
+    await closeTasksByKey(tx, ctx, `trip_call:${trip.id}`, 'Journey cancelled', 'cancelled');
+    if (affected.length) {
+      await createTask(tx, ctx, {
+        branchId: trip.branchId,
+        type: 'replan_transport',
+        title: `Journey ${trip.reference} cancelled: arrange transport for ${affected.length} passenger(s) and tell them`,
+        entityType: 'trip',
+        entityId: trip.id,
+        ownerMembershipId: trip.ownerMembershipId,
+        priority: 'urgent',
+        dedupeKey: `trip_cancel:${trip.id}`,
+      });
+    }
+    await audit(tx, ctx, { action: 'trip.cancelled', entityType: 'trip', entityId: trip.id, reason: input.reason });
+    return { affectedPassengers: affected.length };
+  });
 }

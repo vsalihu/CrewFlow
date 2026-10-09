@@ -103,6 +103,7 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
     if (reconfirm) blockers.push({ code: 'RECONFIRM', message: `${reconfirm} worker(s) must reconfirm the changed shift.` });
 
     let unresolvedLegs = 0;
+    let unconfirmedJourneys = 0;
     let anyAgency = false;
     let allReady = true;
     for (const a of confirmedA) {
@@ -113,11 +114,15 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
           allReady = false;
         } else if (r.mode === 'agency_trip') {
           anyAgency = true;
-          if (!['published', 'departed', 'completed'].includes(r.tripState ?? '')) allReady = false;
+          if (!['published', 'departed', 'completed'].includes(r.tripState ?? '')) {
+            allReady = false;
+            unconfirmedJourneys++;
+          }
         } else if (r.mode === 'unresolved') allReady = false;
       }
     }
     if (unresolvedLegs) blockers.push({ code: 'TRANSPORT_UNRESOLVED', message: `${unresolvedLegs} transport leg(s) unresolved.` });
+    if (unconfirmedJourneys) blockers.push({ code: 'JOURNEY_UNCONFIRMED', message: `${unconfirmedJourneys} leg(s) on a journey the driver has not accepted in its current form.` });
     const transport: TransportState = !confirmedA.length ? 'unplanned' : unresolvedLegs ? 'unplanned' : allReady ? (anyAgency ? 'ready' : 'not_required') : 'proposed';
 
     const extMine = ext.filter((e) => confirmedA.some((a) => a.id === e.assignmentId));
