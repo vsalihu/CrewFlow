@@ -12,7 +12,11 @@ type Need = Awaited<ReturnType<typeof transportNeeds>>[number];
 
 function legText(r: Need['outbound']): { text: string; tone: 'ok' | 'warn' | 'bad' | 'neutral' } {
   if (!r) return { text: 'not set', tone: 'bad' };
-  if (r.r.mode === 'agency_trip') return { text: `${r.tripRef} (${label(r.tripState ?? '')})`, tone: r.tripState === 'published' || r.tripState === 'departed' || r.tripState === 'completed' ? 'ok' : 'warn' };
+  if (r.r.mode === 'agency_trip')
+    return {
+      text: `${r.tripRef} (${label(r.tripState ?? '')})`,
+      tone: r.tripState === 'published' || r.tripState === 'departed' || r.tripState === 'completed' ? 'ok' : 'warn',
+    };
   if (r.r.mode === 'private_confirmed') return { text: 'private, confirmed', tone: 'ok' };
   if (r.r.mode === 'not_required') return { text: 'not required', tone: 'neutral' };
   return r.r.accountableMembershipId ? { text: `unresolved, ${r.accountable} accountable`, tone: 'warn' } : { text: 'unresolved', tone: 'bad' };
@@ -39,7 +43,14 @@ export default async function TransportPage({ searchParams }: { searchParams: Pr
           <label htmlFor="date" className="sr-only">
             Date
           </label>
-          <input key={date} id="date" name="date" type="date" defaultValue={date} className="h-8 rounded-[var(--radius-ui)] border border-hairline-strong bg-surface px-2 text-sm" />
+          <input
+            key={date}
+            id="date"
+            name="date"
+            type="date"
+            defaultValue={date}
+            className="h-8 rounded-[var(--radius-ui)] border border-hairline-strong bg-surface px-2 text-sm"
+          />
           <Button type="submit">Show</Button>
         </form>
         <span className="text-sm text-ink-muted">{fmtDate(date)}</span>
@@ -150,7 +161,12 @@ export default async function TransportPage({ searchParams }: { searchParams: Pr
                           <label className="sr-only" htmlFor={`note-${n.assignmentId}`}>
                             Who confirmed and how
                           </label>
-                          <input id={`note-${n.assignmentId}`} name="note" placeholder="Who confirmed, how…" className="h-7 w-40 rounded border border-hairline-strong bg-surface px-1 text-xs" />
+                          <input
+                            id={`note-${n.assignmentId}`}
+                            name="note"
+                            placeholder="Who confirmed, how…"
+                            className="h-7 w-40 rounded border border-hairline-strong bg-surface px-1 text-xs"
+                          />
                           <button className="h-7 rounded border border-hairline-strong px-2 text-xs hover:bg-surface-2">Save</button>
                         </form>
                       </td>

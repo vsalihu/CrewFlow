@@ -89,7 +89,18 @@ const COORDINATOR: Capability[] = [
  * Note what is absent: coordinators cannot approve readiness (compliance) or export payroll.
  */
 export const ROLE_CAPABILITIES: Record<Role, Capability[]> = {
-  org_admin: ['org.manage', 'membership.manage', 'integration.manage', 'policy.manage', 'audit.read', 'client.read', 'order.read', 'task.read', 'trip.read', 'worker.read'],
+  org_admin: [
+    'org.manage',
+    'membership.manage',
+    'integration.manage',
+    'policy.manage',
+    'audit.read',
+    'client.read',
+    'order.read',
+    'task.read',
+    'trip.read',
+    'worker.read',
+  ],
   branch_manager: [...COORDINATOR, 'branch.override', 'client.manage', 'site.verify', 'worker.manage', 'duty.manage', 'audit.read', 'attendance.approve'],
   coordinator: COORDINATOR,
   transport_dispatcher: [

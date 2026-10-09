@@ -3,10 +3,7 @@ import { DateTime } from 'luxon';
 export const BUSINESS_TIMEZONE = 'Europe/London';
 
 export type LocalResolution =
-  | { kind: 'ok'; instant: Date }
-  | { kind: 'ambiguous'; candidates: [Date, Date] }
-  | { kind: 'nonexistent' }
-  | { kind: 'invalid'; reason: string };
+  { kind: 'ok'; instant: Date } | { kind: 'ambiguous'; candidates: [Date, Date] } | { kind: 'nonexistent' } | { kind: 'invalid'; reason: string };
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;

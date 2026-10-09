@@ -30,10 +30,19 @@ export default async function NewTripPage({ searchParams }: { searchParams: Prom
         <TripBuilder
           branchId={branchId}
           serviceDate={date}
-          drivers={ref.drivers.filter((d) => d.branchId === branchId && d.willingToDrive).map((d) => ({ id: d.id, label: `${d.displayName}${d.readinessStatus === 'cleared' ? '' : ` (checks ${d.readinessStatus})`}` }))}
-          vehicles={ref.vehicles.filter((v) => v.branchId === branchId).map((v) => ({ id: v.id, label: `${v.identifier} (${v.passengerCapacity ?? 'unknown'} passenger seats)` }))}
+          drivers={ref.drivers
+            .filter((d) => d.branchId === branchId && d.willingToDrive)
+            .map((d) => ({ id: d.id, label: `${d.displayName}${d.readinessStatus === 'cleared' ? '' : ` (checks ${d.readinessStatus})`}` }))}
+          vehicles={ref.vehicles
+            .filter((v) => v.branchId === branchId)
+            .map((v) => ({ id: v.id, label: `${v.identifier} (${v.passengerCapacity ?? 'unknown'} passenger seats)` }))}
           locations={ref.locations.map((l) => ({ id: l.id, label: `${siteName.get(l.siteId) ?? ''}: ${l.name}${l.verifiedAt ? '' : ' (unverified)'}` }))}
-          people={needs.map((n) => ({ assignmentId: n.assignmentId, workerId: n.workerId, name: n.workerName, detail: `${n.siteName ?? ''} arrive ${fmtTime(n.arrivalAt)}` }))}
+          people={needs.map((n) => ({
+            assignmentId: n.assignmentId,
+            workerId: n.workerId,
+            name: n.workerName,
+            detail: `${n.siteName ?? ''} arrive ${fmtTime(n.arrivalAt)}`,
+          }))}
         />
       </Panel>
       <Button variant="primary" type="submit" className="self-start">

@@ -46,7 +46,12 @@ export async function evaluateReadiness(
   const checks = await tx
     .select()
     .from(readinessChecks)
-    .where(inArray(readinessChecks.requirementId, applicable.map((r) => r.id)));
+    .where(
+      inArray(
+        readinessChecks.requirementId,
+        applicable.map((r) => r.id),
+      ),
+    );
 
   const best = (pred: (c: (typeof checks)[number]) => boolean) => {
     const matching = checks.filter(pred);

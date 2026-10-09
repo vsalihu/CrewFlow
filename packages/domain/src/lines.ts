@@ -101,9 +101,7 @@ export function computeLineTimes(f: LineFields): LineTimes {
   if (arrivalAt && startAt && arrivalAt > startAt) errors.arrivalLocal = ['Arrival must be at or before the start time.'];
   if (endAt && startAt && endAt <= startAt) {
     errors.endLocal = [
-      f.endDayOffset === 0
-        ? 'End is before start. If the shift finishes after midnight, mark it as ending the next day.'
-        : 'End must be after start.',
+      f.endDayOffset === 0 ? 'End is before start. If the shift finishes after midnight, mark it as ending the next day.' : 'End must be after start.',
     ];
   }
   if (f.minimumCount !== null && f.minimumCount > f.requestedCount) errors.minimumCount = ['Minimum cannot exceed the requested count.'];

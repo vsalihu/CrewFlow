@@ -4,17 +4,23 @@ import { CopyButton } from '@/components/CopyButton';
 import { StateBadge } from '@/components/Status';
 import { Button, Field, Flash, Panel, inputClass } from '@/components/ui';
 import { fmtDateTime, label, titleCase } from '@/lib/format';
-import { requireContext } from '@/lib/session';
+import { orNotFound, requireContext } from '@/lib/session';
 import { acknowledgeMessageAction, markSentAction } from '@/app/actions';
 
 export const dynamic = 'force-dynamic';
 
-export default async function MessagePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
+export default async function MessagePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const ctx = await requireContext();
   const { id } = await params;
   const sp = await searchParams;
   const back = sp.back && sp.back.startsWith('/') ? sp.back : '/operations';
-  const { draft: d, recipientName, contactStillCurrent } = await getDraft(ctx, id);
+  const { draft: d, recipientName, contactStillCurrent } = await orNotFound(getDraft(ctx, id));
   const sendable = (d.state === 'draft' || d.state === 'copied') && contactStillCurrent;
   const sent = ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown'].includes(d.state);
   return (
@@ -26,7 +32,8 @@ export default async function MessagePage({ params, searchParams }: { params: Pr
         <h1 className="text-lg font-semibold">{titleCase(d.template)}</h1>
         <StateBadge state={d.state} />
         <span className="text-sm text-ink-muted">
-          To {recipientName} · <span className="font-mono num">{d.contactValue}</span> · describes {d.entityType === 'trip' ? 'journey revision' : 'shift version'} {d.entityRevision} · template v{d.templateVersion}
+          To {recipientName} · <span className="font-mono num">{d.contactValue}</span> · describes{' '}
+          {d.entityType === 'trip' ? 'journey revision' : 'shift version'} {d.entityRevision} · template v{d.templateVersion}
         </span>
       </div>
       <Flash error={sp.error} notice={sp.notice} />

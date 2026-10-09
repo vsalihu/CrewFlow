@@ -21,7 +21,9 @@ export default async function JoinedUpPage({ searchParams }: { searchParams: Pro
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <h1 className="text-lg font-semibold">JoinedUp Queue</h1>
-        <p className="text-sm text-ink-subtle">JoinedUp stays the system of record. Enter each booking there, record its ID, then verify it against JoinedUp.</p>
+        <p className="text-sm text-ink-subtle">
+          JoinedUp stays the system of record. Enter each booking there, record its ID, then verify it against JoinedUp.
+        </p>
       </div>
       <Flash error={sp.error} notice={sp.notice} />
       <Panel title={`Needs action (${pending.length} of ${queue.length})`}>
@@ -64,7 +66,12 @@ export default async function JoinedUpPage({ searchParams }: { searchParams: Pro
                         <label className="sr-only" htmlFor={`act-${q.booking.id}`}>
                           Action
                         </label>
-                        <select id={`act-${q.booking.id}`} name="action" defaultValue={q.booking.state === 'pending_entry' ? 'entered' : 'verified'} className={small}>
+                        <select
+                          id={`act-${q.booking.id}`}
+                          name="action"
+                          defaultValue={q.booking.state === 'pending_entry' ? 'entered' : 'verified'}
+                          className={small}
+                        >
                           <option value="entered">Entered in JoinedUp</option>
                           <option value="verified">Verified in JoinedUp</option>
                           <option value="discrepancy">Discrepancy</option>
@@ -73,7 +80,15 @@ export default async function JoinedUpPage({ searchParams }: { searchParams: Pro
                         <label className="sr-only" htmlFor={`ext-${q.booking.id}`}>
                           JoinedUp booking ID
                         </label>
-                        <input id={`ext-${q.booking.id}`} name="externalBookingId" defaultValue={q.booking.externalBookingId ?? ''} placeholder="Booking ID…" spellCheck={false} autoComplete="off" className={`${small} w-28 font-mono`} />
+                        <input
+                          id={`ext-${q.booking.id}`}
+                          name="externalBookingId"
+                          defaultValue={q.booking.externalBookingId ?? ''}
+                          placeholder="Booking ID…"
+                          spellCheck={false}
+                          autoComplete="off"
+                          className={`${small} w-28 font-mono`}
+                        />
                         <label className="sr-only" htmlFor={`ev-${q.booking.id}`}>
                           Evidence
                         </label>

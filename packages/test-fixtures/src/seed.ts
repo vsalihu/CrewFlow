@@ -75,29 +75,57 @@ export async function seedSyntheticOrganisation(db: Db, opts: { name?: string } 
   const staff: Record<keyof typeof people | 'admin', { membershipId: string; authUserId: string }> = {} as never;
   for (const [key, p] of Object.entries(people)) {
     const authUserId = randomUUID();
-    const [m] = await db.insert(memberships).values({ organisationId, authUserId, displayName: p.name, email: `${key}@example.test` }).returning();
+    const [m] = await db
+      .insert(memberships)
+      .values({ organisationId, authUserId, displayName: p.name, email: `${key}@example.test` })
+      .returning();
     await db.insert(branchMemberships).values({ organisationId, membershipId: m!.id, branchId: p.branch, roles: [...p.roles] });
     staff[key as keyof typeof people] = { membershipId: m!.id, authUserId };
   }
   {
     const authUserId = randomUUID();
-    const [m] = await db.insert(memberships).values({ organisationId, authUserId, displayName: 'Ada Okafor', email: 'admin@example.test', roles: ['org_admin'] }).returning();
+    const [m] = await db
+      .insert(memberships)
+      .values({ organisationId, authUserId, displayName: 'Ada Okafor', email: 'admin@example.test', roles: ['org_admin'] })
+      .returning();
     staff.admin = { membershipId: m!.id, authUserId };
   }
 
   // Clients and sites. "Gault Drove field" is a working field distinct from the packhouse office.
   const [growers] = await db
     .insert(clients)
-    .values({ organisationId, legalName: 'Marshland Growers Ltd (fictional)', displayName: 'Marshland Growers', requiresExternalBooking: true, officialChannel: 'whatsapp_group' })
+    .values({
+      organisationId,
+      legalName: 'Marshland Growers Ltd (fictional)',
+      displayName: 'Marshland Growers',
+      requiresExternalBooking: true,
+      officialChannel: 'whatsapp_group',
+    })
     .returning();
   const [coldStore] = await db
     .insert(clients)
-    .values({ organisationId, legalName: 'Northfield Cold Store Ltd (fictional)', displayName: 'Northfield Cold Store', requiresExternalBooking: true, officialChannel: 'email' })
+    .values({
+      organisationId,
+      legalName: 'Northfield Cold Store Ltd (fictional)',
+      displayName: 'Northfield Cold Store',
+      requiresExternalBooking: true,
+      officialChannel: 'email',
+    })
     .returning();
-  const [growersContact] = await db.insert(clientContacts).values({ organisationId, clientId: growers!.id, name: 'Gwen Tasker', roleTitle: 'Harvest supervisor', authorityScope: 'orders' }).returning();
+  const [growersContact] = await db
+    .insert(clientContacts)
+    .values({ organisationId, clientId: growers!.id, name: 'Gwen Tasker', roleTitle: 'Harvest supervisor', authorityScope: 'orders' })
+    .returning();
   const [packhouse] = await db
     .insert(sites)
-    .values({ organisationId, clientId: growers!.id, branchId: north!.id, canonicalName: 'Haddon Fen Packhouse', address: '1 Example Drove, Fenmoor', postcode: 'ZZ1 1AA' })
+    .values({
+      organisationId,
+      clientId: growers!.id,
+      branchId: north!.id,
+      canonicalName: 'Haddon Fen Packhouse',
+      address: '1 Example Drove, Fenmoor',
+      postcode: 'ZZ1 1AA',
+    })
     .returning();
   const [field] = await db
     .insert(sites)
@@ -110,13 +138,31 @@ export async function seedSyntheticOrganisation(db: Db, opts: { name?: string } 
   const now = new Date('2026-09-01T09:00:00Z');
   const [packhouseGate] = await db
     .insert(workLocations)
-    .values({ organisationId, siteId: packhouse!.id, name: 'Packhouse staff gate', pinText: 'what3words ///example.packhouse.gate', accessInstructions: 'Report to goods-in office', verifiedAt: now, verifiedBy: staff.manager.membershipId })
+    .values({
+      organisationId,
+      siteId: packhouse!.id,
+      name: 'Packhouse staff gate',
+      pinText: 'what3words ///example.packhouse.gate',
+      accessInstructions: 'Report to goods-in office',
+      verifiedAt: now,
+      verifiedBy: staff.manager.membershipId,
+    })
     .returning();
   // Field entrance not yet verified: dispatch to it must be blocked.
-  const [fieldEntrance] = await db.insert(workLocations).values({ organisationId, siteId: field!.id, name: 'Field entrance off Gault Drove', pinText: null }).returning();
+  const [fieldEntrance] = await db
+    .insert(workLocations)
+    .values({ organisationId, siteId: field!.id, name: 'Field entrance off Gault Drove', pinText: null })
+    .returning();
   const [coldStoreGate] = await db
     .insert(workLocations)
-    .values({ organisationId, siteId: coldStoreSite!.id, name: 'Cold store yard', pinText: 'Yard gate B', verifiedAt: now, verifiedBy: staff.manager.membershipId })
+    .values({
+      organisationId,
+      siteId: coldStoreSite!.id,
+      name: 'Cold store yard',
+      pinText: 'Yard gate B',
+      verifiedAt: now,
+      verifiedBy: staff.manager.membershipId,
+    })
     .returning();
 
   // Workers.
@@ -146,10 +192,24 @@ export async function seedSyntheticOrganisation(db: Db, opts: { name?: string } 
   await db.update(workers).set({ latestFinishLocal: '18:00' }).where(eq(workers.id, w.siyana));
 
   // Readiness: two organisation-wide blocking requirements.
-  const [registration] = await db.insert(readinessRequirements).values({ organisationId, scope: 'worker', requirementType: 'registration', label: 'Registration complete', policy: 'blocking' }).returning();
-  const [eligibility] = await db.insert(readinessRequirements).values({ organisationId, scope: 'worker', requirementType: 'work_eligibility', label: 'Authorised work-eligibility check', policy: 'blocking' }).returning();
+  const [registration] = await db
+    .insert(readinessRequirements)
+    .values({ organisationId, scope: 'worker', requirementType: 'registration', label: 'Registration complete', policy: 'blocking' })
+    .returning();
+  const [eligibility] = await db
+    .insert(readinessRequirements)
+    .values({ organisationId, scope: 'worker', requirementType: 'work_eligibility', label: 'Authorised work-eligibility check', policy: 'blocking' })
+    .returning();
   for (const key of Object.keys(w) as WorkerKey[]) {
-    await db.insert(readinessChecks).values({ organisationId, requirementId: registration!.id, workerId: w[key], status: key === 'yordan' ? 'pending' : 'cleared', checkedBy: staff.compliance.membershipId, checkedAt: now, reason: 'Synthetic fixture' });
+    await db.insert(readinessChecks).values({
+      organisationId,
+      requirementId: registration!.id,
+      workerId: w[key],
+      status: key === 'yordan' ? 'pending' : 'cleared',
+      checkedBy: staff.compliance.membershipId,
+      checkedAt: now,
+      reason: 'Synthetic fixture',
+    });
     await db.insert(readinessChecks).values({
       organisationId,
       requirementId: eligibility!.id,
@@ -164,21 +224,80 @@ export async function seedSyntheticOrganisation(db: Db, opts: { name?: string } 
   }
 
   // Transport. Driving is explicit: only these records make someone a driver.
-  const [driverIvo] = await db.insert(drivers).values({ organisationId, branchId: north!.id, workerId: w.ivo, displayName: 'Ivo Dragnev', willingToDrive: true, readinessStatus: 'cleared' }).returning();
-  const [driverStoyko] = await db.insert(drivers).values({ organisationId, branchId: north!.id, workerId: w.stoyko, displayName: 'Stoyko Arnaudov', willingToDrive: true, readinessStatus: 'cleared' }).returning();
-  const [driverMo] = await db.insert(drivers).values({ organisationId, branchId: north!.id, membershipId: staff.dispatcher.membershipId, displayName: 'Mo Ferrant', willingToDrive: true, readinessStatus: 'cleared' }).returning();
-  for (const [d, n] of [[driverIvo!, '100'], [driverStoyko!, '110'], [driverMo!, '190']] as const) {
-    await db.insert(contactPoints).values({ organisationId, driverId: d.id, type: 'phone', value: `07700 900${n}`, normalised: `+447700900${n}`, status: 'active', verifiedAt: now });
+  const [driverIvo] = await db
+    .insert(drivers)
+    .values({ organisationId, branchId: north!.id, workerId: w.ivo, displayName: 'Ivo Dragnev', willingToDrive: true, readinessStatus: 'cleared' })
+    .returning();
+  const [driverStoyko] = await db
+    .insert(drivers)
+    .values({ organisationId, branchId: north!.id, workerId: w.stoyko, displayName: 'Stoyko Arnaudov', willingToDrive: true, readinessStatus: 'cleared' })
+    .returning();
+  const [driverMo] = await db
+    .insert(drivers)
+    .values({
+      organisationId,
+      branchId: north!.id,
+      membershipId: staff.dispatcher.membershipId,
+      displayName: 'Mo Ferrant',
+      willingToDrive: true,
+      readinessStatus: 'cleared',
+    })
+    .returning();
+  for (const [d, n] of [
+    [driverIvo!, '100'],
+    [driverStoyko!, '110'],
+    [driverMo!, '190'],
+  ] as const) {
+    await db
+      .insert(contactPoints)
+      .values({ organisationId, driverId: d.id, type: 'phone', value: `07700 900${n}`, normalised: `+447700900${n}`, status: 'active', verifiedAt: now });
   }
-  const [car] = await db.insert(vehicles).values({ organisationId, branchId: north!.id, identifier: 'Agency car 1', registration: 'TE57 AAA', totalSeats: 5, passengerCapacity: 4, readinessStatus: 'cleared' }).returning();
-  const [minibus] = await db.insert(vehicles).values({ organisationId, branchId: north!.id, identifier: 'Agency minibus', registration: 'TE57 BBB', totalSeats: 9, passengerCapacity: 8, readinessStatus: 'cleared' }).returning();
+  const [car] = await db
+    .insert(vehicles)
+    .values({
+      organisationId,
+      branchId: north!.id,
+      identifier: 'Agency car 1',
+      registration: 'TE57 AAA',
+      totalSeats: 5,
+      passengerCapacity: 4,
+      readinessStatus: 'cleared',
+    })
+    .returning();
+  const [minibus] = await db
+    .insert(vehicles)
+    .values({
+      organisationId,
+      branchId: north!.id,
+      identifier: 'Agency minibus',
+      registration: 'TE57 BBB',
+      totalSeats: 9,
+      passengerCapacity: 8,
+      readinessStatus: 'cleared',
+    })
+    .returning();
   const [privateCar] = await db
     .insert(vehicles)
-    .values({ organisationId, branchId: north!.id, identifier: "Stoyko's car", registration: 'TE57 CCC', operator: 'Private', totalSeats: 5, passengerCapacity: 4, ownerDriverId: driverStoyko!.id })
+    .values({
+      organisationId,
+      branchId: north!.id,
+      identifier: "Stoyko's car",
+      registration: 'TE57 CCC',
+      operator: 'Private',
+      totalSeats: 5,
+      passengerCapacity: 4,
+      ownerDriverId: driverStoyko!.id,
+    })
     .returning();
-  const [unknownCar] = await db.insert(vehicles).values({ organisationId, branchId: north!.id, identifier: 'Unknown car (capacity unconfirmed)', registration: 'TE57 DDD', passengerCapacity: null }).returning();
+  const [unknownCar] = await db
+    .insert(vehicles)
+    .values({ organisationId, branchId: north!.id, identifier: 'Unknown car (capacity unconfirmed)', registration: 'TE57 DDD', passengerCapacity: null })
+    .returning();
   // A couple who travel together privately; no extra passengers.
-  const [couple] = await db.insert(travelParties).values({ organisationId, name: 'Arnaudov household', additionalPassengersAllowed: false, source: 'Confirmed by the driver (synthetic)' }).returning();
+  const [couple] = await db
+    .insert(travelParties)
+    .values({ organisationId, name: 'Arnaudov household', additionalPassengersAllowed: false, source: 'Confirmed by the driver (synthetic)' })
+    .returning();
   await db.insert(travelPartyMembers).values([
     { organisationId, partyId: couple!.id, workerId: w.stoyko },
     { organisationId, partyId: couple!.id, workerId: w.velina },
@@ -206,4 +325,3 @@ export async function seedSyntheticOrganisation(db: Db, opts: { name?: string } 
     parties: { couple: couple!.id },
   };
 }
-

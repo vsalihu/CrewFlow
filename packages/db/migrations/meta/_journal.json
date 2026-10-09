@@ -15,6 +15,13 @@
       "when": 1791533303028,
       "tag": "0001_security",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791536253633,
+      "tag": "0002_queue_and_heartbeat",
+      "breakpoints": true
     }
   ]
 }

@@ -48,7 +48,12 @@ describe('message drafts', () => {
     const c = await markDraftCopied(ctx, offer.id);
     const sent = await markManuallySent(ctx, offer.id, { expectedVersion: c.version, channel: 'whatsapp_manual', sentAt: '2026-10-09T18:10:00+01:00' });
     expect(sent.state).toBe('manually_marked_sent'); // a human send, not provider delivery
-    await recordWorkerResponse(ctx, assignmentIds[0]!, { lineVersion: 1, response: 'accepted', channel: 'whatsapp_manual', respondedAt: '2026-10-09T18:20:00+01:00' });
+    await recordWorkerResponse(ctx, assignmentIds[0]!, {
+      lineVersion: 1,
+      response: 'accepted',
+      channel: 'whatsapp_manual',
+      respondedAt: '2026-10-09T18:20:00+01:00',
+    });
     const booking = await generateDraft(ctx, { template: 'worker_booking', assignmentId: assignmentIds[0]! });
     expect(booking.content).toContain('Transport there: not arranged yet (we will contact you)');
     expect(booking.content).toContain('what3words ///example.packhouse.gate');
@@ -62,7 +67,17 @@ describe('message drafts', () => {
     await raiseConflict(ctx, o.id, { lineId: o.lines[0]!.id, fieldPath: 'startLocal', observations: [{ value: '07:00' }, { value: '06:30' }] });
     await expect(generateDraft(ctx, { template: 'worker_offer', assignmentId: assignmentIds[0]! })).rejects.toMatchObject({ code: 'SOURCE_CONFLICT' });
 
-    const f = await acceptedOrder(ctx, seed, [line(seed, { requestedCount: 1, serviceDate: '2026-10-11', siteId: seed.sites.field, workLocationId: seed.locations.fieldEntrance, startLocal: '13:00', arrivalLocal: '12:50', endLocal: '18:00' })]);
+    const f = await acceptedOrder(ctx, seed, [
+      line(seed, {
+        requestedCount: 1,
+        serviceDate: '2026-10-11',
+        siteId: seed.sites.field,
+        workLocationId: seed.locations.fieldEntrance,
+        startLocal: '13:00',
+        arrivalLocal: '12:50',
+        endLocal: '18:00',
+      }),
+    ]);
     const r = await proposeAssignments(ctx, f.lines[0]!.id, { workers: [{ workerId: seed.workers.bozhidar }] });
     const offer = await generateDraft(ctx, { template: 'worker_offer', assignmentId: r.assignmentIds[0]! });
     expect(offer.content).not.toContain('Location:');
@@ -78,20 +93,29 @@ describe('message drafts', () => {
     const { assignmentIds } = await proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.nevena }] });
     const offer = await generateDraft(ctx, { template: 'worker_offer', assignmentId: assignmentIds[0]! });
     const s = await source(ctx, seed, 'start 8 not 7');
-    const input = { expectedVersion: o.version, sourceMessageIds: [s.id], reason: 'Later start', lineChanges: [{ lineId: l.id, arrivalLocal: '07:50', startLocal: '08:00' }] };
+    const input = {
+      expectedVersion: o.version,
+      sourceMessageIds: [s.id],
+      reason: 'Later start',
+      lineChanges: [{ lineId: l.id, arrivalLocal: '07:50', startLocal: '08:00' }],
+    };
     const p = await previewAmendment(ctx, o.id, input);
     expect(p.pendingMessagesToSupersede).toBe(1);
     await amendOrder(ctx, o.id, { ...input, acknowledgeImpactToken: p.token });
     const [d] = await read(ctx, (tx) => tx.select().from(messageDrafts).where(eq(messageDrafts.id, offer.id)));
     expect(d!.state).toBe('superseded');
-    await expect(markManuallySent(ctx, offer.id, { expectedVersion: d!.version, channel: 'whatsapp_manual', sentAt: '2026-10-09T19:00:00+01:00' })).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      markManuallySent(ctx, offer.id, { expectedVersion: d!.version, channel: 'whatsapp_manual', sentAt: '2026-10-09T19:00:00+01:00' }),
+    ).rejects.toBeInstanceOf(DomainError);
   });
 
   it('AT15: a 06:29 cancellation withdraws unsent instructions and asks for acknowledgement from everyone already told', async () => {
     const ctx = await world.as('coordinator');
     const { seed, clock } = world;
     const o = await acceptedOrder(ctx, seed, [line(seed, { requestedCount: 2, serviceDate: '2026-10-13' })]);
-    const { assignmentIds } = await proposeAssignments(ctx, o.lines[0]!.id, { workers: [{ workerId: seed.workers.desislava }, { workerId: seed.workers.ognyan }] });
+    const { assignmentIds } = await proposeAssignments(ctx, o.lines[0]!.id, {
+      workers: [{ workerId: seed.workers.desislava }, { workerId: seed.workers.ognyan }],
+    });
     const told = await generateDraft(ctx, { template: 'worker_offer', assignmentId: assignmentIds[0]! });
     await markManuallySent(ctx, told.id, { expectedVersion: 1, channel: 'whatsapp_manual', sentAt: '2026-10-12T18:00:00+01:00' });
     const notYet = await generateDraft(ctx, { template: 'worker_offer', assignmentId: assignmentIds[1]! });
@@ -102,13 +126,23 @@ describe('message drafts', () => {
     expect(res.acknowledgementTasks).toBe(1);
     const [withdrawn] = await read(ctx, (tx) => tx.select().from(messageDrafts).where(eq(messageDrafts.id, notYet.id)));
     expect(withdrawn!.state).toBe('withdrawn');
-    const ack = await read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.entityId, assignmentIds[0]!), eq(tasks.type, 'cancellation_ack'), eq(tasks.state, 'open'))));
+    const ack = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.entityId, assignmentIds[0]!), eq(tasks.type, 'cancellation_ack'), eq(tasks.state, 'open'))),
+    );
     expect(ack[0]!.priority).toBe('urgent');
     const cancelMsg = await generateDraft(ctx, { template: 'cancellation', assignmentId: assignmentIds[0]! });
     expect(cancelMsg.content).toContain('CANCELLED');
     await markManuallySent(ctx, cancelMsg.id, { expectedVersion: 1, channel: 'phone', sentAt: '2026-10-13T06:35:00+01:00' });
     await recordMessageAcknowledged(ctx, cancelMsg.id, 'She replied OK');
-    const still = await read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.entityId, assignmentIds[0]!), eq(tasks.type, 'cancellation_ack'), eq(tasks.state, 'open'))));
+    const still = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.entityId, assignmentIds[0]!), eq(tasks.type, 'cancellation_ack'), eq(tasks.state, 'open'))),
+    );
     expect(still).toHaveLength(0);
     clock.set('2026-10-09T17:00:00Z');
   });
@@ -171,7 +205,12 @@ describe('outbox', () => {
     await processOutbox(tdb.appDb, { messaging: adapter }, { limit: 100 });
     const [after] = await read(ctx, (tx) => tx.select().from(messageDrafts).where(eq(messageDrafts.id, d.id)));
     expect(after!.state).toBe('delivery_unknown');
-    const reconcile = await read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.entityId, d.id), eq(tasks.type, 'reconcile_delivery'))));
+    const reconcile = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.entityId, d.id), eq(tasks.type, 'reconcile_delivery'))),
+    );
     expect(reconcile).toHaveLength(1);
     // Re-queueing is refused because the draft is no longer a draft.
     await expect(queueProviderSend(ctx, d.id, after!.version)).rejects.toMatchObject({ code: 'INVALID_STATE' });
@@ -188,7 +227,10 @@ describe('outbox', () => {
     await queueProviderSend(ctx, d.id, 1);
     // Simulate a crash: claim the events, then never finish them.
     await tdb.appDb.execute(sql`select * from app.claim_outbox(100)`);
-    await tdb.ownerDb.update(outboxEvents).set({ nextAttemptAt: new Date(Date.now() - 30 * 60_000) }).where(eq(outboxEvents.state, 'processing'));
+    await tdb.ownerDb
+      .update(outboxEvents)
+      .set({ nextAttemptAt: new Date(Date.now() - 30 * 60_000) })
+      .where(eq(outboxEvents.state, 'processing'));
     expect(await releaseStuckOutbox(tdb.appDb, 10)).toBeGreaterThan(0);
     const adapter = new SandboxMessagingAdapter('accept');
     const results = await processOutbox(tdb.appDb, { messaging: adapter }, { limit: 100 });

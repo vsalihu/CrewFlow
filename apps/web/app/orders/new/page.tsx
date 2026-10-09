@@ -7,7 +7,15 @@ import { createOrderFromSource } from '../../actions';
 export const dynamic = 'force-dynamic';
 
 function nowLocalInput(): string {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
   const g = (t: string) => parts.find((p) => p.type === t)!.value;
   return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
 }
@@ -61,7 +69,14 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
               </Field>
             </div>
             <Field label="Message or call notes, exactly as received" htmlFor="rawText" hint="Kept unchanged as evidence. Do not tidy it up.">
-              <textarea id="rawText" name="rawText" required rows={12} className={`${textareaClass} font-mono`} placeholder="Paste the WhatsApp message or email here…" />
+              <textarea
+                id="rawText"
+                name="rawText"
+                required
+                rows={12}
+                className={`${textareaClass} font-mono`}
+                placeholder="Paste the WhatsApp message or email here…"
+              />
             </Field>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="needsClarification" value="1" /> Needs clarification before we can act

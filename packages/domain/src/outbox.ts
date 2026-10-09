@@ -72,10 +72,16 @@ async function dispatchMessage(ctx: ServiceContext, adapters: OutboxAdapters, e:
       await assertDraftCurrent(tx, d);
     } catch (err) {
       if (!isDomainError(err)) throw err;
-      await tx.update(messageDrafts).set({ state: 'superseded', endedAt: new Date(), endReason: err.message, version: d.version + 1 }).where(eq(messageDrafts.id, d.id));
+      await tx
+        .update(messageDrafts)
+        .set({ state: 'superseded', endedAt: new Date(), endReason: err.message, version: d.version + 1 })
+        .where(eq(messageDrafts.id, d.id));
       return { skip: err.message } as const;
     }
-    await tx.update(messageDrafts).set({ state: 'delivery_unknown', version: d.version + 1 }).where(eq(messageDrafts.id, d.id));
+    await tx
+      .update(messageDrafts)
+      .set({ state: 'delivery_unknown', version: d.version + 1 })
+      .where(eq(messageDrafts.id, d.id));
     return { draft: d } as const;
   });
   if ('skip' in prepared) return { outcome: 'skipped_stale', error: prepared.skip ?? null };
@@ -84,7 +90,10 @@ async function dispatchMessage(ctx: ServiceContext, adapters: OutboxAdapters, e:
   const result = await adapters.messaging.send({ draftId: d.id, to: d.contactValue ?? '', body: d.content, idempotencyKey: `${d.id}:${d.entityRevision}` });
   return command(ctx, { operation: 'outbox.message.result' }, async (tx) => {
     if (result.kind === 'accepted') {
-      await tx.update(messageDrafts).set({ state: 'provider_accepted', sentAt: new Date(), sentChannel: 'whatsapp_api', version: sql`${messageDrafts.version} + 1` }).where(eq(messageDrafts.id, d.id));
+      await tx
+        .update(messageDrafts)
+        .set({ state: 'provider_accepted', sentAt: new Date(), sentChannel: 'whatsapp_api', version: sql`${messageDrafts.version} + 1` })
+        .where(eq(messageDrafts.id, d.id));
       return { outcome: 'done' as const, error: null };
     }
     if (result.kind === 'unknown') {
@@ -100,10 +109,16 @@ async function dispatchMessage(ctx: ServiceContext, adapters: OutboxAdapters, e:
       return { outcome: 'manual_required' as const, error: result.detail };
     }
     if (result.retryable && e.attempts < RETRY_MINUTES.length) {
-      await tx.update(messageDrafts).set({ state: 'queued', version: sql`${messageDrafts.version} + 1` }).where(and(eq(messageDrafts.id, d.id), eq(messageDrafts.state, 'delivery_unknown')));
+      await tx
+        .update(messageDrafts)
+        .set({ state: 'queued', version: sql`${messageDrafts.version} + 1` })
+        .where(and(eq(messageDrafts.id, d.id), eq(messageDrafts.state, 'delivery_unknown')));
       return { outcome: 'retry' as const, error: result.error };
     }
-    await tx.update(messageDrafts).set({ state: 'failed', version: sql`${messageDrafts.version} + 1` }).where(eq(messageDrafts.id, d.id));
+    await tx
+      .update(messageDrafts)
+      .set({ state: 'failed', version: sql`${messageDrafts.version} + 1` })
+      .where(eq(messageDrafts.id, d.id));
     await createTask(tx, ctx, {
       branchId: d.branchId,
       type: 'message_failed',
@@ -121,7 +136,11 @@ async function dispatchMessage(ctx: ServiceContext, adapters: OutboxAdapters, e:
  * Claim and process due outbox events. Returns per-event outcomes for logging and tests.
  * Events with no external effect today (JoinedUp is a manual queue) complete as "done".
  */
-export async function processOutbox(db: Db, adapters: OutboxAdapters, opts: { limit?: number; now?: () => Date } = {}): Promise<{ id: string; eventType: string; outcome: OutboxOutcome }[]> {
+export async function processOutbox(
+  db: Db,
+  adapters: OutboxAdapters,
+  opts: { limit?: number; now?: () => Date } = {},
+): Promise<{ id: string; eventType: string; outcome: OutboxOutcome }[]> {
   const now = opts.now ?? (() => new Date());
   const claimed = (await db.execute(sql`select * from app.claim_outbox(${opts.limit ?? 20})`)).rows as unknown as ClaimedEvent[];
   const results: { id: string; eventType: string; outcome: OutboxOutcome }[] = [];

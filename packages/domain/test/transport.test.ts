@@ -87,7 +87,12 @@ describe('transport rules', () => {
         { purpose: 'pickup', label: 'Town square' },
         { purpose: 'dropoff', label: 'Packhouse gate', workLocationId: seed.locations.packhouseGate, travelMinutesFromPrevious: 30 },
       ],
-      passengers: Object.entries(crew.ids).map(([k, id]) => ({ workerId: seed.workers[k as keyof Seed['workers']], assignmentId: id, boardStopSeq: 1, alightStopSeq: 2 })),
+      passengers: Object.entries(crew.ids).map(([k, id]) => ({
+        workerId: seed.workers[k as keyof Seed['workers']],
+        assignmentId: id,
+        boardStopSeq: 1,
+        alightStopSeq: 2,
+      })),
     }).catch((e) => e);
     expect(err).toBeInstanceOf(DomainError);
     expect((err as DomainError).code).toBe('CAPACITY_EXCEEDED');
@@ -117,7 +122,12 @@ describe('transport rules', () => {
     const v1 = await validateTrip(ctx, t.id);
     expect(v1.violations.filter((v) => v.severity === 'error')).toEqual([]);
     const p = await proposeTripToDriver(ctx, t.id, t.version);
-    const callTasks = await read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.entityId, t.id), eq(tasks.type, 'confirm_driver'), eq(tasks.state, 'open'))));
+    const callTasks = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.entityId, t.id), eq(tasks.type, 'confirm_driver'), eq(tasks.state, 'open'))),
+    );
     expect(callTasks[0]!.title).toContain('Call Mo Ferrant');
     const e1 = await publishTrip(ctx, t.id, p.version).catch((e) => e);
     expect((e1 as DomainError).code).toBe('STALE_CONFIRMATION');
@@ -134,7 +144,12 @@ describe('transport rules', () => {
     const ok = await recordTripAcceptance(ctx, t.id, { revisionNo: 2, decision: 'accepted', method: 'phone', decidedAt: '2026-10-11T19:40:00+01:00' });
     const pub = await publishTrip(ctx, t.id, ok.version);
     expect(pub.revisionNo).toBe(2);
-    const reqs = await read(ctx, (tx) => tx.select().from(transportRequirements).where(and(eq(transportRequirements.assignmentId, crew.ids.kaloyan!), eq(transportRequirements.leg, 'outbound'))));
+    const reqs = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(transportRequirements)
+        .where(and(eq(transportRequirements.assignmentId, crew.ids.kaloyan!), eq(transportRequirements.leg, 'outbound'))),
+    );
     expect(reqs[0]!.mode).toBe('agency_trip');
   });
 
@@ -190,8 +205,18 @@ describe('transport rules', () => {
         { purpose: 'driver_own_work' as const, label: 'Packhouse gate', workLocationId: seed.locations.packhouseGate, travelMinutesFromPrevious: minutesToOwn },
       ],
       passengers: [
-        ...Object.entries(pack.ids).map(([k, id]) => ({ workerId: seed.workers[k as keyof Seed['workers']], assignmentId: id, boardStopSeq: 1, alightStopSeq: 2 })),
-        ...Object.entries(cold.ids).map(([k, id]) => ({ workerId: seed.workers[k as keyof Seed['workers']], assignmentId: id, boardStopSeq: 3, alightStopSeq: 4 })),
+        ...Object.entries(pack.ids).map(([k, id]) => ({
+          workerId: seed.workers[k as keyof Seed['workers']],
+          assignmentId: id,
+          boardStopSeq: 1,
+          alightStopSeq: 2,
+        })),
+        ...Object.entries(cold.ids).map(([k, id]) => ({
+          workerId: seed.workers[k as keyof Seed['workers']],
+          assignmentId: id,
+          boardStopSeq: 3,
+          alightStopSeq: 4,
+        })),
       ],
     });
     // Six passengers in a four-seat car is fine: never more than four on any segment.
@@ -249,7 +274,12 @@ describe('transport rules', () => {
         { purpose: 'pickup', label: 'Town square' },
         { purpose: 'dropoff', label: 'Packhouse gate', workLocationId: seed.locations.packhouseGate, travelMinutesFromPrevious: 30 },
       ],
-      passengers: (['mira', 'teodor', 'ralitsa'] as const).map((k) => ({ workerId: seed.workers[k], assignmentId: crew.ids[k]!, boardStopSeq: 1, alightStopSeq: 2 })),
+      passengers: (['mira', 'teodor', 'ralitsa'] as const).map((k) => ({
+        workerId: seed.workers[k],
+        assignmentId: crew.ids[k]!,
+        boardStopSeq: 1,
+        alightStopSeq: 2,
+      })),
     });
     const results = await Promise.allSettled([
       addTripPassenger(ctx, t.id, { workerId: seed.workers.bozhidar, assignmentId: crew.ids.bozhidar!, boardStopSeq: 1, alightStopSeq: 2 }),
@@ -288,18 +318,37 @@ describe('transport rules', () => {
     expect(dis.affectedPassengers).toBe(2);
     const [c] = await read(ctx, (tx) => tx.select().from(cases).where(eq(cases.id, dis.caseId)));
     expect((c!.affected as { passengers: unknown[] }).passengers).toHaveLength(2);
-    const eta = await read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.type, 'client_eta_update'), eq(tasks.entityId, crew.order.id))));
+    const eta = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.type, 'client_eta_update'), eq(tasks.entityId, crew.order.id))),
+    );
     expect(eta).toHaveLength(1);
     const [trip] = await read(ctx, (tx) => tx.select().from(trips).where(eq(trips.id, t.id)));
     await setTripProgress(ctx, t.id, 'completed', trip!.version);
     expect(dep.version).toBeGreaterThan(pub.version);
 
     // Unknown finish: the return is the dispatcher's to arrange, which is not the same as booked.
-    await setTransportRequirement(ctx, crew.ids.kaloyan!, { leg: 'return', mode: 'unresolved', accountableMembershipId: seed.staff.dispatcher.membershipId, arrangementNote: 'Supervisor will message when they finish' });
-    const ret = await read(ctx, (tx) => tx.select().from(transportRequirements).where(and(eq(transportRequirements.assignmentId, crew.ids.kaloyan!), eq(transportRequirements.leg, 'return'))));
+    await setTransportRequirement(ctx, crew.ids.kaloyan!, {
+      leg: 'return',
+      mode: 'unresolved',
+      accountableMembershipId: seed.staff.dispatcher.membershipId,
+      arrangementNote: 'Supervisor will message when they finish',
+    });
+    const ret = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(transportRequirements)
+        .where(and(eq(transportRequirements.assignmentId, crew.ids.kaloyan!), eq(transportRequirements.leg, 'return'))),
+    );
     expect(ret[0]!.mode).toBe('unresolved');
     clock.set(`${d}T19:55:00Z`);
-    const r = await requestReturnPickup(ctx, { assignmentIds: [crew.ids.kaloyan!, crew.ids.radka!], pickupAt: new Date(`${d}T20:45:00+01:00`), reason: 'finished' });
+    const r = await requestReturnPickup(ctx, {
+      assignmentIds: [crew.ids.kaloyan!, crew.ids.radka!],
+      pickupAt: new Date(`${d}T20:45:00+01:00`),
+      reason: 'finished',
+    });
     const urgent = await read(ctx, (tx) => tx.select().from(tasks).where(eq(tasks.id, r.taskIds[0]!)));
     expect(urgent[0]!.priority).toBe('urgent');
     clock.set('2026-10-09T17:00:00Z');
@@ -310,7 +359,12 @@ describe('transport rules', () => {
     const coord = await world.as('coordinator');
     const { seed } = world;
     const crew = await confirmedCrew(coord, seed, ['lazar'], { serviceDate: '2026-10-18' });
-    const r = await requestReturnPickup(ctx, { assignmentIds: [crew.ids.lazar!], pickupAt: new Date('2026-10-18T10:00:00+01:00'), reason: 'unwell', restrictedNote: 'Feeling faint' });
+    const r = await requestReturnPickup(ctx, {
+      assignmentIds: [crew.ids.lazar!],
+      pickupAt: new Date('2026-10-18T10:00:00+01:00'),
+      reason: 'unwell',
+      restrictedNote: 'Feeling faint',
+    });
     const [t] = await read(ctx, (tx) => tx.select().from(tasks).where(eq(tasks.id, r.taskIds[0]!)));
     expect(t!.ownerMembershipId).toBe(seed.staff.dispatcher.membershipId);
     expect(t!.title).not.toContain('faint');

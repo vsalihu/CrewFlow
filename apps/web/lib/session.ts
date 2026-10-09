@@ -1,6 +1,6 @@
 import 'server-only';
 import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getVerifiedAuthUserId, resolveStaffActor, type StaffActor } from '@cds/auth';
 import { isDomainError } from '@cds/contracts';
 import type { ServiceContext } from '@cds/domain';
@@ -50,4 +50,17 @@ export async function requireContext(): Promise<ServiceContext> {
   const actor = await currentActor();
   if (!actor) redirect('/login');
   return { db: db(), actor, requestId: crypto.randomUUID() };
+}
+
+/**
+ * For pages: a record the actor cannot see (missing, or outside their branch/organisation)
+ * renders the standard 404 without revealing whether it exists.
+ */
+export async function orNotFound<T>(p: Promise<T>): Promise<T> {
+  try {
+    return await p;
+  } catch (e) {
+    if (isDomainError(e) && (e.code === 'NOT_FOUND' || e.code === 'PERMISSION_DENIED')) notFound();
+    throw e;
+  }
 }

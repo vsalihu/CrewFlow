@@ -59,7 +59,11 @@ function describe(e: unknown): string | null {
     const fields = Object.values(e.fieldErrors).flat().slice(0, 3);
     return [e.message, ...details, ...fields].join(' ');
   }
-  if (e instanceof ZodError) return `Check the form: ${e.issues.slice(0, 3).map((i) => `${i.path.join('.') || 'value'} ${i.message}`).join('; ')}`;
+  if (e instanceof ZodError)
+    return `Check the form: ${e.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join('.') || 'value'} ${i.message}`)
+      .join('; ')}`;
   return null;
 }
 
@@ -94,7 +98,10 @@ function localToIso(v: string): string {
   const [d, t] = v.split('T');
   const r = resolveLocal(d ?? '', (t ?? '').slice(0, 5), 'Europe/London');
   if (r.kind === 'ok') return r.instant.toISOString();
-  throw new DomainError('VALIDATION_FAILED', r.kind === 'ambiguous' ? `${v} happens twice when the clocks go back; confirm which.` : `${v} is not a valid local time.`);
+  throw new DomainError(
+    'VALIDATION_FAILED',
+    r.kind === 'ambiguous' ? `${v} happens twice when the clocks go back; confirm which.` : `${v} is not a valid local time.`,
+  );
 }
 
 // ------------------------------------------------------------------ session
@@ -153,16 +160,17 @@ export async function createOrderFromSource(formData: FormData) {
       requestState: str(formData, 'needsClarification') ? 'needs_clarification' : 'received',
       lines,
     });
-    return { notice: `Order ${o.reference} saved${o.urgency !== 'normal' ? ` (${o.urgency})` : ''}. Nothing is accepted until you decide.`, goto: `/orders/${o.id}` };
+    return {
+      notice: `Order ${o.reference} saved${o.urgency !== 'normal' ? ` (${o.urgency})` : ''}. Nothing is accepted until you decide.`,
+      goto: `/orders/${o.id}`,
+    };
   });
 }
 
 export async function acceptOrder(formData: FormData) {
   const orderId = req(formData, 'orderId');
   await run(`/orders/${orderId}`, async (ctx) => {
-    const decisions = formData
-      .getAll('lineId')
-      .map((id) => ({ lineId: String(id), acceptedCount: int(formData, `accepted_${id}`) }));
+    const decisions = formData.getAll('lineId').map((id) => ({ lineId: String(id), acceptedCount: int(formData, `accepted_${id}`) }));
     const r = await decideAcceptance(ctx, orderId, { expectedVersion: int(formData, 'version'), decisions, note: str(formData, 'note') });
     return `Agency decision recorded: ${r.requestState.replaceAll('_', ' ')}.`;
   });
@@ -329,7 +337,11 @@ export async function markSentAction(formData: FormData) {
   const draftId = req(formData, 'draftId');
   const back = req(formData, 'back');
   await run(`/messages/${draftId}?back=${encodeURIComponent(back)}`, async (ctx) => {
-    await markManuallySent(ctx, draftId, { expectedVersion: int(formData, 'version'), channel: req(formData, 'channel') as 'whatsapp_manual', sentAt: new Date().toISOString() });
+    await markManuallySent(ctx, draftId, {
+      expectedVersion: int(formData, 'version'),
+      channel: req(formData, 'channel') as 'whatsapp_manual',
+      sentAt: new Date().toISOString(),
+    });
     return { notice: 'Recorded as sent by you. This is not delivery or agreement: record the reply when it comes.', goto: back };
   });
 }
@@ -374,7 +386,12 @@ export async function addPassengerAction(formData: FormData) {
   const tripId = req(formData, 'tripId');
   await run(`/trips/${tripId}`, async (ctx) => {
     const [workerId, assignmentId] = req(formData, 'passenger').split('|');
-    const r = await addTripPassenger(ctx, tripId, { workerId: workerId!, assignmentId: assignmentId || null, boardStopSeq: int(formData, 'board'), alightStopSeq: int(formData, 'alight') });
+    const r = await addTripPassenger(ctx, tripId, {
+      workerId: workerId!,
+      assignmentId: assignmentId || null,
+      boardStopSeq: int(formData, 'board'),
+      alightStopSeq: int(formData, 'alight'),
+    });
     return `Passenger added as revision ${r.revisionNo}. The driver must accept this revision.`;
   });
 }
@@ -397,7 +414,9 @@ export async function tripAcceptanceAction(formData: FormData) {
       decidedAt: new Date().toISOString(),
       note: str(formData, 'note'),
     });
-    return r.outcome === 'stale' ? 'Recorded, but it was for an older revision and does not count.' : `Driver ${req(formData, 'decision')} revision ${req(formData, 'revisionNo')}.`;
+    return r.outcome === 'stale'
+      ? 'Recorded, but it was for an older revision and does not count.'
+      : `Driver ${req(formData, 'decision')} revision ${req(formData, 'revisionNo')}.`;
   });
 }
 
@@ -439,7 +458,7 @@ export async function transportRequirementAction(formData: FormData) {
     await setTransportRequirement(ctx, req(formData, 'assignmentId'), {
       leg: req(formData, 'leg') as 'outbound' | 'return',
       mode: req(formData, 'mode') as 'private_confirmed' | 'not_required' | 'unresolved',
-      accountableMembershipId: str(formData, 'mode') === 'unresolved' ? ctx.actor.kind === 'staff' ? ctx.actor.membershipId : null : null,
+      accountableMembershipId: str(formData, 'mode') === 'unresolved' ? (ctx.actor.kind === 'staff' ? ctx.actor.membershipId : null) : null,
       arrangementNote: str(formData, 'note'),
     });
     return 'Transport arrangement recorded.';
@@ -483,7 +502,11 @@ export async function completeTaskAction(formData: FormData) {
 
 export async function createHandoverAction(formData: FormData) {
   await run('/handover', async (ctx) => {
-    const r = await createHandover(ctx, { branchId: req(formData, 'branchId'), incomingMembershipId: req(formData, 'incomingMembershipId'), note: str(formData, 'note') });
+    const r = await createHandover(ctx, {
+      branchId: req(formData, 'branchId'),
+      incomingMembershipId: req(formData, 'incomingMembershipId'),
+      note: str(formData, 'note'),
+    });
     return `Handed over ${r.taskCount} task(s). The incoming person must acknowledge.`;
   });
 }

@@ -32,7 +32,11 @@ export function AutoRefresh({ generatedAt }: { generatedAt: string }) {
   const stale = age > 60;
   return (
     <span aria-live="polite" className={`text-xs ${offline || stale ? 'font-medium text-bad' : 'text-ink-subtle'}`}>
-      {offline ? 'Offline: this view may be out of date' : stale ? `Stale: last updated ${age}s ago` : `Updated ${new Date(generatedAt).toLocaleTimeString('en-GB', { timeZone: 'Europe/London' })}`}
+      {offline
+        ? 'Offline: this view may be out of date'
+        : stale
+          ? `Stale: last updated ${age}s ago`
+          : `Updated ${new Date(generatedAt).toLocaleTimeString('en-GB', { timeZone: 'Europe/London' })}`}
     </span>
   );
 }

@@ -1,37 +1,13 @@
 // State dimensions are deliberately separate (build plan §6). Do not merge them
 // into one "status" — demand, staffing, transport and attendance change independently.
 
-export const REQUEST_STATES = [
-  'draft',
-  'needs_clarification',
-  'received',
-  'accepted',
-  'partially_accepted',
-  'declined',
-  'cancelled',
-  'closed',
-] as const;
+export const REQUEST_STATES = ['draft', 'needs_clarification', 'received', 'accepted', 'partially_accepted', 'declined', 'cancelled', 'closed'] as const;
 export type RequestState = (typeof REQUEST_STATES)[number];
 
-export const STAFFING_STATES = [
-  'unfilled',
-  'partly_proposed',
-  'proposed_full',
-  'partly_confirmed',
-  'confirmed_full',
-  'over_allocated',
-] as const;
+export const STAFFING_STATES = ['unfilled', 'partly_proposed', 'proposed_full', 'partly_confirmed', 'confirmed_full', 'over_allocated'] as const;
 export type StaffingState = (typeof STAFFING_STATES)[number];
 
-export const TRANSPORT_STATES = [
-  'not_required',
-  'unplanned',
-  'proposed',
-  'awaiting_acceptance',
-  'ready',
-  'disrupted',
-  'completed',
-] as const;
+export const TRANSPORT_STATES = ['not_required', 'unplanned', 'proposed', 'awaiting_acceptance', 'ready', 'disrupted', 'completed'] as const;
 export type TransportState = (typeof TRANSPORT_STATES)[number];
 
 export const EXTERNAL_BOOKING_STATES = [
@@ -60,13 +36,7 @@ export const ASSIGNMENT_STATES = [
 export type AssignmentState = (typeof ASSIGNMENT_STATES)[number];
 
 /** Assignment states that hold a slot on the line and a reservation on the worker. */
-export const ACTIVE_ASSIGNMENT_STATES: readonly AssignmentState[] = [
-  'proposed',
-  'offered',
-  'accepted',
-  'reconfirmation_required',
-  'arrived',
-];
+export const ACTIVE_ASSIGNMENT_STATES: readonly AssignmentState[] = ['proposed', 'offered', 'accepted', 'reconfirmation_required', 'arrived'];
 
 export const WORKER_RESPONSES = ['accepted', 'declined', 'no_answer', 'ambiguous'] as const;
 export type WorkerResponse = (typeof WORKER_RESPONSES)[number];
@@ -77,27 +47,13 @@ export type ResponseChannel = (typeof RESPONSE_CHANNELS)[number];
 export const TRIP_LEG_TYPES = ['outbound', 'return', 'ad_hoc', 'repositioning'] as const;
 export type TripLegType = (typeof TRIP_LEG_TYPES)[number];
 
-export const TRIP_STATES = [
-  'draft',
-  'proposed',
-  'driver_accepted',
-  'published',
-  'departed',
-  'completed',
-  'disrupted',
-  'cancelled',
-] as const;
+export const TRIP_STATES = ['draft', 'proposed', 'driver_accepted', 'published', 'departed', 'completed', 'disrupted', 'cancelled'] as const;
 export type TripState = (typeof TRIP_STATES)[number];
 
 export const STOP_PURPOSES = ['pickup', 'dropoff', 'driver_own_work'] as const;
 export type StopPurpose = (typeof STOP_PURPOSES)[number];
 
-export const TRANSPORT_REQUIREMENT_MODES = [
-  'agency_trip',
-  'private_confirmed',
-  'not_required',
-  'unresolved',
-] as const;
+export const TRANSPORT_REQUIREMENT_MODES = ['agency_trip', 'private_confirmed', 'not_required', 'unresolved'] as const;
 export type TransportRequirementMode = (typeof TRANSPORT_REQUIREMENT_MODES)[number];
 
 export const TRANSPORT_LEGS = ['outbound', 'return'] as const;

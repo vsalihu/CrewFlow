@@ -53,14 +53,15 @@ function validateStructure(m: TripManifest): void {
   for (const p of m.passengers) {
     if (seen.has(p.workerId)) errors.push('A passenger appears twice in this journey.');
     seen.add(p.workerId);
-    if (p.boardStopSeq < 1 || p.boardStopSeq > n || p.alightStopSeq < 1 || p.alightStopSeq > n) errors.push('A passenger refers to a stop that does not exist.');
+    if (p.boardStopSeq < 1 || p.boardStopSeq > n || p.alightStopSeq < 1 || p.alightStopSeq > n)
+      errors.push('A passenger refers to a stop that does not exist.');
     else if (p.alightStopSeq <= p.boardStopSeq) errors.push('Every boarding must be followed by a later drop-off.');
     else {
       if (m.stops[p.boardStopSeq - 1]!.purpose !== 'pickup') errors.push('Passengers must board at a pickup stop.');
       if (m.stops[p.alightStopSeq - 1]!.purpose === 'pickup') errors.push('Passengers must get off at a drop-off stop.');
     }
   }
-  if (m.driverOwnAssignmentId && !m.stops.some((s) => s.purpose === 'driver_own_work')) errors.push("Add the stop where the driver starts their own shift.");
+  if (m.driverOwnAssignmentId && !m.stops.some((s) => s.purpose === 'driver_own_work')) errors.push('Add the stop where the driver starts their own shift.');
   if (errors.length) throw new DomainError('VALIDATION_FAILED', [...new Set(errors)].join(' '));
 }
 
@@ -78,7 +79,10 @@ async function writeRevision(tx: Tx, ctx: ServiceContext, trip: TripRow, revisio
       for (let seg = 1; seg < m.stops.length; seg++) {
         const onBoard = m.passengers.filter((p) => p.boardStopSeq <= seg && p.alightStopSeq > seg).length;
         if (onBoard > veh.passengerCapacity) {
-          throw new DomainError('CAPACITY_EXCEEDED', `${onBoard} passengers between stop ${seg} and ${seg + 1}, but ${veh.identifier} has ${veh.passengerCapacity} passenger seats.`);
+          throw new DomainError(
+            'CAPACITY_EXCEEDED',
+            `${onBoard} passengers between stop ${seg} and ${seg + 1}, but ${veh.identifier} has ${veh.passengerCapacity} passenger seats.`,
+          );
         }
       }
     }
@@ -142,13 +146,22 @@ async function writeRevision(tx: Tx, ctx: ServiceContext, trip: TripRow, revisio
   }
   // Driver and vehicle reservations for the journey window. Overlaps are rejected by the
   // database exclusion constraint, so a driver or vehicle cannot be double-booked.
-  await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.tripId, trip.id), eq(resourceReservations.active, true)));
+  await tx
+    .update(resourceReservations)
+    .set({ active: false })
+    .where(and(eq(resourceReservations.tripId, trip.id), eq(resourceReservations.active, true)));
   if (rev!.plannedDepartureAt && rev!.estimatedEndAt) {
     if (rev!.estimatedEndAt <= rev!.plannedDepartureAt) throw new DomainError('VALIDATION_FAILED', 'The journey must end after it departs.');
     const during = tstzrange(rev!.plannedDepartureAt, rev!.estimatedEndAt);
     try {
-      if (rev!.driverId) await tx.insert(resourceReservations).values({ organisationId: ctx.actor.organisationId, resourceType: 'driver', resourceId: rev!.driverId, during, tripId: trip.id });
-      if (rev!.vehicleId) await tx.insert(resourceReservations).values({ organisationId: ctx.actor.organisationId, resourceType: 'vehicle', resourceId: rev!.vehicleId, during, tripId: trip.id });
+      if (rev!.driverId)
+        await tx
+          .insert(resourceReservations)
+          .values({ organisationId: ctx.actor.organisationId, resourceType: 'driver', resourceId: rev!.driverId, during, tripId: trip.id });
+      if (rev!.vehicleId)
+        await tx
+          .insert(resourceReservations)
+          .values({ organisationId: ctx.actor.organisationId, resourceType: 'vehicle', resourceId: rev!.vehicleId, during, tripId: trip.id });
     } catch (e) {
       translateDbError(e);
     }
@@ -157,11 +170,18 @@ async function writeRevision(tx: Tx, ctx: ServiceContext, trip: TripRow, revisio
 }
 
 async function currentRevision(tx: Tx, trip: TripRow): Promise<RevisionRow> {
-  const [rev] = await tx.select().from(tripRevisions).where(and(eq(tripRevisions.tripId, trip.id), eq(tripRevisions.revisionNo, trip.currentRevision)));
+  const [rev] = await tx
+    .select()
+    .from(tripRevisions)
+    .where(and(eq(tripRevisions.tripId, trip.id), eq(tripRevisions.revisionNo, trip.currentRevision)));
   return rev!;
 }
 
-export async function createTrip(ctx: ServiceContext, raw: CreateTripInput, idempotencyKey?: string): Promise<{ id: string; reference: string; version: number }> {
+export async function createTrip(
+  ctx: ServiceContext,
+  raw: CreateTripInput,
+  idempotencyKey?: string,
+): Promise<{ id: string; reference: string; version: number }> {
   const input = createTripSchema.parse(raw);
   requireCapability(ctx.actor, 'trip.plan', input.branchId);
   return command(ctx, { operation: 'trip.create', idempotencyKey, input }, async (tx) => {
@@ -182,7 +202,12 @@ export async function createTrip(ctx: ServiceContext, raw: CreateTripInput, idem
       .returning();
     const { branchId: _b, serviceDate: _d, legType: _l, ...manifest } = input;
     await writeRevision(tx, ctx, trip!, 1, manifest, 'Journey drafted');
-    await audit(tx, ctx, { action: 'trip.created', entityType: 'trip', entityId: trip!.id, after: { reference, legType: input.legType, serviceDate: input.serviceDate } });
+    await audit(tx, ctx, {
+      action: 'trip.created',
+      entityType: 'trip',
+      entityId: trip!.id,
+      after: { reference, legType: input.legType, serviceDate: input.serviceDate },
+    });
     return { id: trip!.id, reference, version: 1 };
   });
 }
@@ -191,7 +216,12 @@ export async function createTrip(ctx: ServiceContext, raw: CreateTripInput, idem
  * Change route, manifest, driver or vehicle. Creates a new immutable revision; any earlier
  * driver acceptance no longer applies, and unsent manifests for the old revision are superseded.
  */
-export async function reviseTrip(ctx: ServiceContext, tripId: string, raw: ReviseTripInput, idempotencyKey?: string): Promise<{ revisionNo: number; version: number; state: string }> {
+export async function reviseTrip(
+  ctx: ServiceContext,
+  tripId: string,
+  raw: ReviseTripInput,
+  idempotencyKey?: string,
+): Promise<{ revisionNo: number; version: number; state: string }> {
   const input = reviseTripSchema.parse(raw);
   return command(ctx, { operation: 'trip.revise', idempotencyKey, input: { tripId, ...input } }, async (tx) => {
     const [trip] = await tx.select().from(trips).where(eq(trips.id, tripId)).for('update');
@@ -204,7 +234,10 @@ export async function reviseTrip(ctx: ServiceContext, tripId: string, raw: Revis
     const { expectedVersion: _v, reason, ...manifest } = input;
     await writeRevision(tx, ctx, trip, revisionNo, manifest, reason);
     const state = trip.state === 'draft' ? 'draft' : trip.state === 'departed' || trip.state === 'disrupted' ? trip.state : 'proposed';
-    await tx.update(trips).set({ currentRevision: revisionNo, state, version: trip.version + 1, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) }).where(eq(trips.id, trip.id));
+    await tx
+      .update(trips)
+      .set({ currentRevision: revisionNo, state, version: trip.version + 1, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) })
+      .where(eq(trips.id, trip.id));
     await tx
       .update(messageDrafts)
       .set({ state: 'superseded', endedAt: nowOf(ctx), endReason: `Journey revision ${revisionNo}`, version: sql`${messageDrafts.version} + 1` })
@@ -215,7 +248,9 @@ export async function reviseTrip(ctx: ServiceContext, tripId: string, raw: Revis
       await createTask(tx, ctx, {
         branchId: trip.branchId,
         type: 'confirm_driver',
-        title: driverName ? `Call ${driverName} to confirm revised journey ${trip.reference} (revision ${revisionNo})` : `Name a driver for journey ${trip.reference}`,
+        title: driverName
+          ? `Call ${driverName} to confirm revised journey ${trip.reference} (revision ${revisionNo})`
+          : `Name a driver for journey ${trip.reference}`,
         entityType: 'trip',
         entityId: trip.id,
         ownerMembershipId: trip.ownerMembershipId,
@@ -225,7 +260,13 @@ export async function reviseTrip(ctx: ServiceContext, tripId: string, raw: Revis
       const sent = await tx
         .select({ id: messageDrafts.id })
         .from(messageDrafts)
-        .where(and(eq(messageDrafts.entityType, 'trip'), eq(messageDrafts.entityId, trip.id), inArray(messageDrafts.state, ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged'])));
+        .where(
+          and(
+            eq(messageDrafts.entityType, 'trip'),
+            eq(messageDrafts.entityId, trip.id),
+            inArray(messageDrafts.state, ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged']),
+          ),
+        );
       if (sent.length) {
         await createTask(tx, ctx, {
           branchId: trip.branchId,
@@ -239,7 +280,14 @@ export async function reviseTrip(ctx: ServiceContext, tripId: string, raw: Revis
         });
       }
     }
-    await audit(tx, ctx, { action: 'trip.revised', entityType: 'trip', entityId: trip.id, before: { revisionNo: prev.revisionNo, driverId: prev.driverId }, after: { revisionNo, driverId: manifest.driverId ?? null }, reason });
+    await audit(tx, ctx, {
+      action: 'trip.revised',
+      entityType: 'trip',
+      entityId: trip.id,
+      before: { revisionNo: prev.revisionNo, driverId: prev.driverId },
+      after: { revisionNo, driverId: manifest.driverId ?? null },
+      reason,
+    });
     return { revisionNo, version: trip.version + 1, state };
   });
 }
@@ -288,7 +336,10 @@ export async function addTripPassenger(
     const revisionNo = trip.currentRevision + 1;
     await writeRevision(tx, ctx, trip, revisionNo, manifest, 'Passenger added');
     const state = trip.state === 'draft' ? 'draft' : 'proposed';
-    await tx.update(trips).set({ currentRevision: revisionNo, state, version: trip.version + 1, updatedAt: nowOf(ctx) }).where(eq(trips.id, trip.id));
+    await tx
+      .update(trips)
+      .set({ currentRevision: revisionNo, state, version: trip.version + 1, updatedAt: nowOf(ctx) })
+      .where(eq(trips.id, trip.id));
     if (state === 'proposed') {
       const name = await driverDisplayName(tx, rev.driverId);
       await closeTasksByKey(tx, ctx, `trip_call:${trip.id}`, `Superseded by revision ${revisionNo}`, 'cancelled');
@@ -337,7 +388,8 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
     if (!driver || driver.status !== 'active') err('DRIVER_UNAVAILABLE', 'The named driver is not active.');
     else {
       if (!driver.willingToDrive) err('DRIVER_NOT_WILLING', `${driver.displayName} has not agreed to drive.`);
-      if (['blocked', 'expired'].includes(driver.readinessStatus)) err('DRIVER_NOT_READY', `${driver.displayName}'s driving checks are ${driver.readinessStatus}.`);
+      if (['blocked', 'expired'].includes(driver.readinessStatus))
+        err('DRIVER_NOT_READY', `${driver.displayName}'s driving checks are ${driver.readinessStatus}.`);
       else if (driver.readinessStatus !== 'cleared') warn('DRIVER_CHECKS_UNKNOWN', `${driver.displayName}'s driving checks are ${driver.readinessStatus}.`);
     }
   }
@@ -353,7 +405,8 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
   if (capacity !== null) {
     for (let seg = 1; seg < stops.length; seg++) {
       const onBoard = passengers.filter(({ p }) => p.boardStopSeq <= seg && p.alightStopSeq > seg).length;
-      if (onBoard > capacity) err('CAPACITY_EXCEEDED', `${onBoard} passengers between stop ${seg} and ${seg + 1}, but only ${capacity} passenger seats.`, `segment:${seg}`);
+      if (onBoard > capacity)
+        err('CAPACITY_EXCEEDED', `${onBoard} passengers between stop ${seg} and ${seg + 1}, but only ${capacity} passenger seats.`, `segment:${seg}`);
     }
   }
 
@@ -363,7 +416,14 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
   if (driver?.workerId) occupantIds.push(driver.workerId);
   if (occupantIds.length > 1) {
     const memberships = await tx
-      .select({ partyId: travelPartyMembers.partyId, workerId: travelPartyMembers.workerId, name: travelParties.name, allowed: travelParties.additionalPassengersAllowed, from: travelParties.validFrom, to: travelParties.validTo })
+      .select({
+        partyId: travelPartyMembers.partyId,
+        workerId: travelPartyMembers.workerId,
+        name: travelParties.name,
+        allowed: travelParties.additionalPassengersAllowed,
+        from: travelParties.validFrom,
+        to: travelParties.validTo,
+      })
       .from(travelPartyMembers)
       .innerJoin(travelParties, eq(travelParties.id, travelPartyMembers.partyId))
       .where(inArray(travelPartyMembers.workerId, occupantIds));
@@ -373,7 +433,11 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
       const outsiders = occupantIds.filter((id) => !members.has(id));
       if (outsiders.length) {
         const name = privateParties.find((m) => m.partyId === partyId)!.name;
-        err('PRIVATE_PARTY_CONFLICT', `${name} travel privately with no additional passengers; ${outsiders.length} other person(s) are on this journey.`, `party:${partyId}`);
+        err(
+          'PRIVATE_PARTY_CONFLICT',
+          `${name} travel privately with no additional passengers; ${outsiders.length} other person(s) are on this journey.`,
+          `party:${partyId}`,
+        );
       }
     }
   }
@@ -391,7 +455,10 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
   if (!rev.estimatedEndAt) err('TIMES_MISSING', 'No estimated end time, so the driver and vehicle cannot be reserved.');
 
   // Destinations must be verified, usable locations.
-  const locIds = stops.filter((s) => s.purpose !== 'pickup' || trip.legType === 'return').map((s) => s.workLocationId).filter((x): x is string => !!x);
+  const locIds = stops
+    .filter((s) => s.purpose !== 'pickup' || trip.legType === 'return')
+    .map((s) => s.workLocationId)
+    .filter((x): x is string => !!x);
   const locs = locIds.length ? await tx.select().from(workLocations).where(inArray(workLocations.id, locIds)) : [];
   for (const s of stops) {
     const isSiteStop = trip.legType === 'return' ? s.purpose === 'pickup' : s.purpose !== 'pickup';
@@ -406,7 +473,13 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
   if (rev.driverOwnAssignmentId) assignmentIds.push(rev.driverOwnAssignmentId);
   const shiftRows = assignmentIds.length
     ? await tx
-        .select({ id: assignments.id, state: assignments.state, arrivalAt: orderLines.arrivalAt, startAt: orderLines.startAt, endUnknown: orderLines.endUnknown })
+        .select({
+          id: assignments.id,
+          state: assignments.state,
+          arrivalAt: orderLines.arrivalAt,
+          startAt: orderLines.startAt,
+          endUnknown: orderLines.endUnknown,
+        })
         .from(assignments)
         .innerJoin(orderLines, eq(orderLines.id, assignments.lineId))
         .where(inArray(assignments.id, assignmentIds))
@@ -418,23 +491,34 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
       warn('PASSENGER_UNLINKED', `${name} is not linked to a shift assignment.`, `worker:${p.workerId}`);
       continue;
     }
-    if (!['accepted', 'arrived'].includes(shift.state)) warn('PASSENGER_NOT_CONFIRMED', `${name} has not confirmed the shift (${shift.state}).`, `worker:${p.workerId}`);
+    if (!['accepted', 'arrived'].includes(shift.state))
+      warn('PASSENGER_NOT_CONFIRMED', `${name} has not confirmed the shift (${shift.state}).`, `worker:${p.workerId}`);
     if (trip.legType === 'outbound') {
       const due = shift.arrivalAt ?? shift.startAt;
       const at = eta[p.alightStopSeq - 1];
       if (due && at && at.getTime() > due.getTime() - bufferMs) {
-        err('LATE_ARRIVAL', `${name} would arrive ${formatInstantLocal(at)}, needed by ${formatInstantLocal(new Date(due.getTime() - bufferMs))}.`, `worker:${p.workerId}`);
+        err(
+          'LATE_ARRIVAL',
+          `${name} would arrive ${formatInstantLocal(at)}, needed by ${formatInstantLocal(new Date(due.getTime() - bufferMs))}.`,
+          `worker:${p.workerId}`,
+        );
       }
       if (due && !at) err('TIMES_MISSING', `No arrival estimate for ${name}'s drop-off.`, `worker:${p.workerId}`);
     }
-    if (trip.legType === 'return' && shift.endUnknown) warn('FINISH_UNKNOWN', `${name}'s finish time is not known; confirm the pickup time.`, `worker:${p.workerId}`);
+    if (trip.legType === 'return' && shift.endUnknown)
+      warn('FINISH_UNKNOWN', `${name}'s finish time is not known; confirm the pickup time.`, `worker:${p.workerId}`);
   }
   if (rev.driverOwnAssignmentId) {
     const own = shiftRows.find((s) => s.id === rev.driverOwnAssignmentId);
     const stop = stops.find((s) => s.purpose === 'driver_own_work');
     const due = own?.arrivalAt ?? own?.startAt;
     const at = stop ? eta[stop.seq - 1] : null;
-    if (due && at && at.getTime() > due.getTime() - bufferMs) err('LATE_ARRIVAL', `The driver would reach their own shift at ${formatInstantLocal(at)}, needed by ${formatInstantLocal(new Date(due.getTime() - bufferMs))}.`, 'driver');
+    if (due && at && at.getTime() > due.getTime() - bufferMs)
+      err(
+        'LATE_ARRIVAL',
+        `The driver would reach their own shift at ${formatInstantLocal(at)}, needed by ${formatInstantLocal(new Date(due.getTime() - bufferMs))}.`,
+        'driver',
+      );
   }
 
   // A worker cannot be on two live journeys of the same kind that day.
@@ -446,7 +530,10 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
       .innerJoin(trips, and(eq(trips.id, tripRevisions.tripId), eq(trips.currentRevision, tripRevisions.revisionNo)))
       .where(
         and(
-          inArray(tripPassengers.workerId, passengers.map(({ p }) => p.workerId)),
+          inArray(
+            tripPassengers.workerId,
+            passengers.map(({ p }) => p.workerId),
+          ),
           ne(trips.id, trip.id),
           eq(trips.serviceDate, trip.serviceDate),
           eq(trips.legType, trip.legType),
@@ -504,7 +591,10 @@ export async function proposeTripToDriver(ctx: ServiceContext, tripId: string, e
     const rev = await currentRevision(tx, trip);
     if (!rev.driverId) throw new DomainError('VALIDATION_FAILED', 'Name a driver before proposing the journey.');
     const name = await driverDisplayName(tx, rev.driverId);
-    await tx.update(trips).set({ state: 'proposed', version: trip.version + 1, updatedAt: nowOf(ctx) }).where(eq(trips.id, trip.id));
+    await tx
+      .update(trips)
+      .set({ state: 'proposed', version: trip.version + 1, updatedAt: nowOf(ctx) })
+      .where(eq(trips.id, trip.id));
     await createTask(tx, ctx, {
       branchId: trip.branchId,
       type: 'confirm_driver',
@@ -524,14 +614,22 @@ export async function proposeTripToDriver(ctx: ServiceContext, tripId: string, e
  * Record the named driver's answer for a specific revision (phone call, message or link).
  * An answer about an older revision is kept but does not count.
  */
-export async function recordTripAcceptance(ctx: ServiceContext, tripId: string, raw: TripAcceptanceInput, idempotencyKey?: string): Promise<{ outcome: 'applied' | 'stale'; state: string; version: number }> {
+export async function recordTripAcceptance(
+  ctx: ServiceContext,
+  tripId: string,
+  raw: TripAcceptanceInput,
+  idempotencyKey?: string,
+): Promise<{ outcome: 'applied' | 'stale'; state: string; version: number }> {
   const input = tripAcceptanceSchema.parse(raw);
   return command(ctx, { operation: 'trip.acceptance', idempotencyKey, input: { tripId, ...input } }, async (tx) => {
     const [trip] = await tx.select().from(trips).where(eq(trips.id, tripId)).for('update');
     if (!trip) throw notFound('Journey');
     requireCapability(ctx.actor, 'trip.record_acceptance', trip.branchId);
     const rev = await currentRevision(tx, trip);
-    const [answered] = await tx.select().from(tripRevisions).where(and(eq(tripRevisions.tripId, trip.id), eq(tripRevisions.revisionNo, input.revisionNo)));
+    const [answered] = await tx
+      .select()
+      .from(tripRevisions)
+      .where(and(eq(tripRevisions.tripId, trip.id), eq(tripRevisions.revisionNo, input.revisionNo)));
     if (!answered) throw new DomainError('VALIDATION_FAILED', 'That journey revision does not exist.');
     if (!answered.driverId) throw new DomainError('VALIDATION_FAILED', 'That revision has no named driver.');
     await tx.insert(tripAcceptances).values({
@@ -546,12 +644,20 @@ export async function recordTripAcceptance(ctx: ServiceContext, tripId: string, 
       note: input.note ?? null,
     });
     if (input.revisionNo !== rev.revisionNo) {
-      await audit(tx, ctx, { action: 'trip.acceptance_stale', entityType: 'trip', entityId: trip.id, after: { answeredRevision: input.revisionNo, currentRevision: rev.revisionNo } });
+      await audit(tx, ctx, {
+        action: 'trip.acceptance_stale',
+        entityType: 'trip',
+        entityId: trip.id,
+        after: { answeredRevision: input.revisionNo, currentRevision: rev.revisionNo },
+      });
       return { outcome: 'stale' as const, state: trip.state, version: trip.version };
     }
     if (!['proposed', 'draft', 'driver_accepted'].includes(trip.state)) throw new DomainError('INVALID_STATE', `This journey is ${trip.state}.`);
     const state = input.decision === 'accepted' ? 'driver_accepted' : 'proposed';
-    await tx.update(trips).set({ state, version: trip.version + 1, updatedAt: nowOf(ctx) }).where(eq(trips.id, trip.id));
+    await tx
+      .update(trips)
+      .set({ state, version: trip.version + 1, updatedAt: nowOf(ctx) })
+      .where(eq(trips.id, trip.id));
     if (input.decision === 'accepted') {
       await closeTasksByKey(tx, ctx, `trip_call:${trip.id}`, `Driver accepted revision ${rev.revisionNo} by ${input.method}`);
     } else {
@@ -567,13 +673,23 @@ export async function recordTripAcceptance(ctx: ServiceContext, tripId: string, 
         dedupeKey: `trip_replan:${trip.id}`,
       });
     }
-    await audit(tx, ctx, { action: 'trip.acceptance_recorded', entityType: 'trip', entityId: trip.id, after: { revisionNo: rev.revisionNo, decision: input.decision, method: input.method } });
+    await audit(tx, ctx, {
+      action: 'trip.acceptance_recorded',
+      entityType: 'trip',
+      entityId: trip.id,
+      after: { revisionNo: rev.revisionNo, decision: input.decision, method: input.method },
+    });
     return { outcome: 'applied' as const, state, version: trip.version + 1 };
   });
 }
 
 /** Publish a journey: only a valid revision the named driver has accepted. */
-export async function publishTrip(ctx: ServiceContext, tripId: string, expectedVersion: number, idempotencyKey?: string): Promise<{ version: number; revisionNo: number }> {
+export async function publishTrip(
+  ctx: ServiceContext,
+  tripId: string,
+  expectedVersion: number,
+  idempotencyKey?: string,
+): Promise<{ version: number; revisionNo: number }> {
   return command(ctx, { operation: 'trip.publish', idempotencyKey, input: { tripId, expectedVersion } }, async (tx) => {
     const [trip] = await tx.select().from(trips).where(eq(trips.id, tripId)).for('update');
     if (!trip) throw notFound('Journey');
@@ -600,9 +716,14 @@ export async function publishTrip(ctx: ServiceContext, tripId: string, expectedV
             : violations.some((x) => x.code === 'STALE_CONFIRMATION')
               ? 'STALE_CONFIRMATION'
               : 'VALIDATION_FAILED';
-      throw new DomainError(code, 'This journey cannot be published yet.', { violations: violations.map((x) => ({ code: x.code, message: x.message, subject: x.subject })) });
+      throw new DomainError(code, 'This journey cannot be published yet.', {
+        violations: violations.map((x) => ({ code: x.code, message: x.message, subject: x.subject })),
+      });
     }
-    await tx.update(trips).set({ state: 'published', version: trip.version + 1, updatedAt: nowOf(ctx) }).where(eq(trips.id, trip.id));
+    await tx
+      .update(trips)
+      .set({ state: 'published', version: trip.version + 1, updatedAt: nowOf(ctx) })
+      .where(eq(trips.id, trip.id));
     const leg = trip.legType === 'return' ? 'return' : trip.legType === 'outbound' ? 'outbound' : null;
     if (leg) {
       const ps = await tx.select({ assignmentId: tripPassengers.assignmentId }).from(tripPassengers).where(eq(tripPassengers.tripRevisionId, rev.id));
@@ -612,8 +733,18 @@ export async function publishTrip(ctx: ServiceContext, tripId: string, expectedV
         if (!p.assignmentId) continue;
         await tx
           .insert(transportRequirements)
-          .values({ organisationId: ctx.actor.organisationId, assignmentId: p.assignmentId, leg, mode: 'agency_trip', tripId: trip.id, createdBy: actorId(ctx.actor) })
-          .onConflictDoUpdate({ target: [transportRequirements.assignmentId, transportRequirements.leg], set: { mode: 'agency_trip', tripId: trip.id, updatedAt: nowOf(ctx) } });
+          .values({
+            organisationId: ctx.actor.organisationId,
+            assignmentId: p.assignmentId,
+            leg,
+            mode: 'agency_trip',
+            tripId: trip.id,
+            createdBy: actorId(ctx.actor),
+          })
+          .onConflictDoUpdate({
+            target: [transportRequirements.assignmentId, transportRequirements.leg],
+            set: { mode: 'agency_trip', tripId: trip.id, updatedAt: nowOf(ctx) },
+          });
         await closeTasksByKey(tx, ctx, `return_pickup:${p.assignmentId}`, `Return journey ${trip.reference} published`);
       }
     }
@@ -623,7 +754,12 @@ export async function publishTrip(ctx: ServiceContext, tripId: string, expectedV
   });
 }
 
-export async function setTripProgress(ctx: ServiceContext, tripId: string, state: 'departed' | 'completed', expectedVersion: number): Promise<{ version: number }> {
+export async function setTripProgress(
+  ctx: ServiceContext,
+  tripId: string,
+  state: 'departed' | 'completed',
+  expectedVersion: number,
+): Promise<{ version: number }> {
   return command(ctx, { operation: 'trip.progress' }, async (tx) => {
     const [trip] = await tx.select().from(trips).where(eq(trips.id, tripId)).for('update');
     if (!trip) throw notFound('Journey');
@@ -631,8 +767,15 @@ export async function setTripProgress(ctx: ServiceContext, tripId: string, state
     checkVersion(trip.version, expectedVersion);
     const allowed = state === 'departed' ? ['published'] : ['departed', 'published', 'disrupted'];
     if (!allowed.includes(trip.state)) throw new DomainError('INVALID_STATE', `A ${trip.state} journey cannot be marked ${state}.`);
-    await tx.update(trips).set({ state, version: trip.version + 1, updatedAt: nowOf(ctx) }).where(eq(trips.id, trip.id));
-    if (state === 'completed') await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.tripId, trip.id), eq(resourceReservations.active, true)));
+    await tx
+      .update(trips)
+      .set({ state, version: trip.version + 1, updatedAt: nowOf(ctx) })
+      .where(eq(trips.id, trip.id));
+    if (state === 'completed')
+      await tx
+        .update(resourceReservations)
+        .set({ active: false })
+        .where(and(eq(resourceReservations.tripId, trip.id), eq(resourceReservations.active, true)));
     await audit(tx, ctx, { action: `trip.${state}`, entityType: 'trip', entityId: trip.id });
     return { version: trip.version + 1 };
   });
@@ -644,7 +787,11 @@ export async function setTripProgress(ctx: ServiceContext, tripId: string, state
  * Breakdown, driver cancellation or similar: every passenger on the current manifest is
  * affected. Opens a case and concrete tasks (replacement transport, client ETA updates).
  */
-export async function reportTripDisruption(ctx: ServiceContext, tripId: string, input: { kind: 'breakdown' | 'driver_cancelled' | 'delay' | 'other'; note: string }): Promise<{ caseId: string; affectedPassengers: number }> {
+export async function reportTripDisruption(
+  ctx: ServiceContext,
+  tripId: string,
+  input: { kind: 'breakdown' | 'driver_cancelled' | 'delay' | 'other'; note: string },
+): Promise<{ caseId: string; affectedPassengers: number }> {
   return command(ctx, { operation: 'trip.disruption' }, async (tx) => {
     const [trip] = await tx.select().from(trips).where(eq(trips.id, tripId)).for('update');
     if (!trip) throw notFound('Journey');
@@ -657,7 +804,10 @@ export async function reportTripDisruption(ctx: ServiceContext, tripId: string, 
       .innerJoin(workers, eq(workers.id, tripPassengers.workerId))
       .leftJoin(assignments, eq(assignments.id, tripPassengers.assignmentId))
       .where(eq(tripPassengers.tripRevisionId, rev.id));
-    await tx.update(trips).set({ state: 'disrupted', version: trip.version + 1, updatedAt: nowOf(ctx) }).where(eq(trips.id, trip.id));
+    await tx
+      .update(trips)
+      .set({ state: 'disrupted', version: trip.version + 1, updatedAt: nowOf(ctx) })
+      .where(eq(trips.id, trip.id));
     const [c] = await tx
       .insert(cases)
       .values({
@@ -667,7 +817,11 @@ export async function reportTripDisruption(ctx: ServiceContext, tripId: string, 
         severity: 'high',
         ownerMembershipId: trip.ownerMembershipId,
         summary: `${trip.reference}: ${input.kind.replace('_', ' ')}. ${passengers.length} passenger(s) affected.`,
-        affected: { tripId: trip.id, revisionNo: rev.revisionNo, passengers: passengers.map((p) => ({ workerId: p.workerId, assignmentId: p.assignmentId })) } as never,
+        affected: {
+          tripId: trip.id,
+          revisionNo: rev.revisionNo,
+          passengers: passengers.map((p) => ({ workerId: p.workerId, assignmentId: p.assignmentId })),
+        } as never,
         restrictedNotes: input.note,
         createdBy: actorId(ctx.actor),
       })
@@ -684,7 +838,10 @@ export async function reportTripDisruption(ctx: ServiceContext, tripId: string, 
     });
     const orderIds = [...new Set(passengers.map((p) => p.orderId).filter((x): x is string => !!x))];
     if (orderIds.length) {
-      const os = await tx.select({ id: orders.id, reference: orders.reference, owner: orders.ownerMembershipId }).from(orders).where(inArray(orders.id, orderIds));
+      const os = await tx
+        .select({ id: orders.id, reference: orders.reference, owner: orders.ownerMembershipId })
+        .from(orders)
+        .where(inArray(orders.id, orderIds));
       for (const o of os) {
         await createTask(tx, ctx, {
           branchId: trip.branchId,
@@ -698,7 +855,12 @@ export async function reportTripDisruption(ctx: ServiceContext, tripId: string, 
         });
       }
     }
-    await audit(tx, ctx, { action: 'trip.disrupted', entityType: 'trip', entityId: trip.id, after: { kind: input.kind, caseId: c!.id, passengers: passengers.length } });
+    await audit(tx, ctx, {
+      action: 'trip.disrupted',
+      entityType: 'trip',
+      entityId: trip.id,
+      after: { kind: input.kind, caseId: c!.id, passengers: passengers.length },
+    });
     return { caseId: c!.id, affectedPassengers: passengers.length };
   });
 }
@@ -731,7 +893,14 @@ export async function setTransportRequirement(ctx: ServiceContext, assignmentId:
       })
       .onConflictDoUpdate({
         target: [transportRequirements.assignmentId, transportRequirements.leg],
-        set: { mode: input.mode, accountableMembershipId: input.accountableMembershipId ?? null, arrangementNote: input.arrangementNote ?? null, tripId: null, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) },
+        set: {
+          mode: input.mode,
+          accountableMembershipId: input.accountableMembershipId ?? null,
+          arrangementNote: input.arrangementNote ?? null,
+          tripId: null,
+          updatedAt: nowOf(ctx),
+          updatedBy: actorId(ctx.actor),
+        },
       });
     await audit(tx, ctx, { action: 'transport.requirement_set', entityType: 'assignment', entityId: assignmentId, after: input });
   });
@@ -777,10 +946,24 @@ export async function requestReturnPickup(
     for (const r of rows) {
       await tx
         .insert(transportRequirements)
-        .values({ organisationId: ctx.actor.organisationId, assignmentId: r.a.id, leg: 'return', mode: 'unresolved', accountableMembershipId: actorId(ctx.actor), arrangementNote: `Pickup requested for ${formatInstantLocal(input.pickupAt)}`, createdBy: actorId(ctx.actor) })
+        .values({
+          organisationId: ctx.actor.organisationId,
+          assignmentId: r.a.id,
+          leg: 'return',
+          mode: 'unresolved',
+          accountableMembershipId: actorId(ctx.actor),
+          arrangementNote: `Pickup requested for ${formatInstantLocal(input.pickupAt)}`,
+          createdBy: actorId(ctx.actor),
+        })
         .onConflictDoUpdate({
           target: [transportRequirements.assignmentId, transportRequirements.leg],
-          set: { mode: 'unresolved', tripId: null, accountableMembershipId: actorId(ctx.actor), arrangementNote: `Pickup requested for ${formatInstantLocal(input.pickupAt)}`, updatedAt: nowOf(ctx) },
+          set: {
+            mode: 'unresolved',
+            tripId: null,
+            accountableMembershipId: actorId(ctx.actor),
+            arrangementNote: `Pickup requested for ${formatInstantLocal(input.pickupAt)}`,
+            updatedAt: nowOf(ctx),
+          },
         });
       taskIds.push(
         await createTask(tx, ctx, {
@@ -796,14 +979,25 @@ export async function requestReturnPickup(
         }),
       );
     }
-    await audit(tx, ctx, { action: 'transport.return_requested', entityType: 'assignment', entityId: rows[0]!.a.id, after: { assignmentIds: input.assignmentIds, pickupAt: input.pickupAt, reason: input.reason } });
+    await audit(tx, ctx, {
+      action: 'transport.return_requested',
+      entityType: 'assignment',
+      entityId: rows[0]!.a.id,
+      after: { assignmentIds: input.assignmentIds, pickupAt: input.pickupAt, reason: input.reason },
+    });
     return { taskIds, caseId };
   });
 }
 
 export async function listDrivers(ctx: ServiceContext, branchId: string) {
   requireCapability(ctx.actor, 'trip.read', branchId);
-  return read(ctx, (tx) => tx.select().from(drivers).where(and(eq(drivers.branchId, branchId), eq(drivers.status, 'active'))).orderBy(asc(drivers.displayName)));
+  return read(ctx, (tx) =>
+    tx
+      .select()
+      .from(drivers)
+      .where(and(eq(drivers.branchId, branchId), eq(drivers.status, 'active')))
+      .orderBy(asc(drivers.displayName)),
+  );
 }
 
 /**
@@ -811,16 +1005,27 @@ export async function listDrivers(ctx: ServiceContext, branchId: string) {
  * becomes unresolved again, with a task to re-plan. A journey already on the road needs a
  * dispatcher decision instead.
  */
-export async function cancelTrip(ctx: ServiceContext, tripId: string, input: { expectedVersion: number; reason: string }): Promise<{ affectedPassengers: number }> {
+export async function cancelTrip(
+  ctx: ServiceContext,
+  tripId: string,
+  input: { expectedVersion: number; reason: string },
+): Promise<{ affectedPassengers: number }> {
   return command(ctx, { operation: 'trip.cancel' }, async (tx) => {
     const [trip] = await tx.select().from(trips).where(eq(trips.id, tripId)).for('update');
     if (!trip) throw notFound('Journey');
     requireCapability(ctx.actor, 'trip.plan', trip.branchId);
     checkVersion(trip.version, input.expectedVersion);
-    if (trip.state === 'departed') throw new DomainError('INVALID_STATE', 'This journey is travelling: record a disruption and decide what happens to the passengers.');
+    if (trip.state === 'departed')
+      throw new DomainError('INVALID_STATE', 'This journey is travelling: record a disruption and decide what happens to the passengers.');
     if (['cancelled', 'completed'].includes(trip.state)) throw new DomainError('INVALID_STATE', `This journey is ${trip.state}.`);
-    await tx.update(trips).set({ state: 'cancelled', version: trip.version + 1, updatedAt: nowOf(ctx) }).where(eq(trips.id, trip.id));
-    await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.tripId, trip.id), eq(resourceReservations.active, true)));
+    await tx
+      .update(trips)
+      .set({ state: 'cancelled', version: trip.version + 1, updatedAt: nowOf(ctx) })
+      .where(eq(trips.id, trip.id));
+    await tx
+      .update(resourceReservations)
+      .set({ active: false })
+      .where(and(eq(resourceReservations.tripId, trip.id), eq(resourceReservations.active, true)));
     await tx
       .update(messageDrafts)
       .set({ state: 'withdrawn', endedAt: nowOf(ctx), endReason: `Journey cancelled: ${input.reason}`, version: sql`${messageDrafts.version} + 1` })

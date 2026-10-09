@@ -34,7 +34,12 @@ export async function captureSource(ctx: ServiceContext, raw: CaptureSourceInput
       })
       .returning({ id: sourceMessages.id });
     // The audit row records the capture, not the private text itself.
-    await audit(tx, ctx, { action: 'source.captured', entityType: 'source_message', entityId: row!.id, after: { kind: input.kind, length: input.rawText.length } });
+    await audit(tx, ctx, {
+      action: 'source.captured',
+      entityType: 'source_message',
+      entityId: row!.id,
+      after: { kind: input.kind, length: input.rawText.length },
+    });
     return { id: row!.id };
   });
 }

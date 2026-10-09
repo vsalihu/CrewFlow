@@ -10,7 +10,7 @@ type DevUser = { authUserId: string; name: string; role: string };
 
 async function devUsers(): Promise<DevUser[]> {
   try {
-    return JSON.parse(await readFile(path.join(process.cwd(), '.dev-users.json'), 'utf8')) as DevUser[];
+    return JSON.parse(await readFile(process.env.DEV_USERS_FILE ?? path.join(process.cwd(), '.dev-users.json'), 'utf8')) as DevUser[];
   } catch {
     return [];
   }

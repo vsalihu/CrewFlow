@@ -57,11 +57,7 @@ export class DomainError extends Error {
   readonly fieldErrors: Record<string, string[]>;
   readonly currentVersion?: number;
 
-  constructor(
-    code: ErrorCode,
-    message: string,
-    opts: { violations?: Violation[]; fieldErrors?: Record<string, string[]>; currentVersion?: number } = {},
-  ) {
+  constructor(code: ErrorCode, message: string, opts: { violations?: Violation[]; fieldErrors?: Record<string, string[]>; currentVersion?: number } = {}) {
     super(message);
     this.name = 'DomainError';
     this.code = code;

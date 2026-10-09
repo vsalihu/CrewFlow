@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getOrderDetail, lineFieldsFromRow, previewAmendment } from '@cds/domain';
 import { isDomainError } from '@cds/contracts';
 import { Button, Empty, Field, Flash, Panel, inputClass, textareaClass } from '@/components/ui';
-import { requireContext } from '@/lib/session';
+import { orNotFound, requireContext } from '@/lib/session';
 import { amendLineAction, prepareAmendmentAction } from '@/app/actions';
 
 export const dynamic = 'force-dynamic';
@@ -20,11 +20,17 @@ const FIELDS = [
   ['notes', 'Notes', 'text'],
 ] as const;
 
-export default async function AmendPage({ params, searchParams }: { params: Promise<{ id: string; lineId: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
+export default async function AmendPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string; lineId: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const ctx = await requireContext();
   const { id, lineId } = await params;
   const sp = await searchParams;
-  const d = await getOrderDetail(ctx, id);
+  const d = await orNotFound(getOrderDetail(ctx, id));
   const line = d.lines.find((x) => x.l.id === lineId);
   if (!line) return <Empty>Line not found.</Empty>;
   const current = lineFieldsFromRow(line.l);
@@ -36,7 +42,12 @@ export default async function AmendPage({ params, searchParams }: { params: Prom
   if (sp.src && sp.change) {
     change = JSON.parse(sp.change) as Record<string, unknown>;
     try {
-      preview = await previewAmendment(ctx, id, { expectedVersion: d.order.version, sourceMessageIds: [sp.src], reason: sp.reason ?? 'Amendment', lineChanges: [{ lineId, ...change }] });
+      preview = await previewAmendment(ctx, id, {
+        expectedVersion: d.order.version,
+        sourceMessageIds: [sp.src],
+        reason: sp.reason ?? 'Amendment',
+        lineChanges: [{ lineId, ...change }],
+      });
     } catch (e) {
       if (!isDomainError(e)) throw e;
       previewError = e.message + ' ' + Object.values(e.fieldErrors).flat().join(' ');
@@ -63,10 +74,19 @@ export default async function AmendPage({ params, searchParams }: { params: Prom
               ))}
             </ul>
             <ul className="flex flex-col gap-1 rounded-[var(--radius-ui)] bg-warn-bg p-3 text-warn">
-              <li>{preview.reconfirmations.length} confirmed worker(s) must reconfirm{preview.reconfirmations.length ? `: ${preview.reconfirmations.map((r) => r.workerName).join(', ')}` : ''}.</li>
+              <li>
+                {preview.reconfirmations.length} confirmed worker(s) must reconfirm
+                {preview.reconfirmations.length ? `: ${preview.reconfirmations.map((r) => r.workerName).join(', ')}` : ''}.
+              </li>
               <li>{preview.staleOffers.length} outstanding offer(s) must be re-sent.</li>
-              <li>{preview.pendingMessagesToSupersede} unsent message(s) will be withdrawn; {preview.sentMessagesNeedingAmendment} sent message(s) need an amendment.</li>
-              <li>{preview.tripsAffected.length} journey(s) affected{preview.tripsAffected.length ? `: ${preview.tripsAffected.map((t) => t.reference).join(', ')}` : ''}.</li>
+              <li>
+                {preview.pendingMessagesToSupersede} unsent message(s) will be withdrawn; {preview.sentMessagesNeedingAmendment} sent message(s) need an
+                amendment.
+              </li>
+              <li>
+                {preview.tripsAffected.length} journey(s) affected
+                {preview.tripsAffected.length ? `: ${preview.tripsAffected.map((t) => t.reference).join(', ')}` : ''}.
+              </li>
               <li>{preview.externalBookingsToUpdate} JoinedUp booking(s) to update.</li>
               {preview.excessAssignments.map((e) => (
                 <li key={e.lineId}>

@@ -29,7 +29,9 @@ export type CommandOptions = {
 };
 
 function hashInput(input: unknown): string {
-  return createHash('sha256').update(JSON.stringify(input ?? null)).digest('hex');
+  return createHash('sha256')
+    .update(JSON.stringify(input ?? null))
+    .digest('hex');
 }
 
 /**

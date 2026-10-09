@@ -41,7 +41,17 @@ const blank = (date: string): Line => ({
  * Repeatable shift lines. One request often holds several sites, roles and start times;
  * each becomes an independently staffed line. Empty fields stay empty: nothing is defaulted.
  */
-export function LineEditor({ clients, sites, locations, defaultDate }: { clients: { id: string; name: string }[]; sites: Site[]; locations: Loc[]; defaultDate: string }) {
+export function LineEditor({
+  clients,
+  sites,
+  locations,
+  defaultDate,
+}: {
+  clients: { id: string; name: string }[];
+  sites: Site[];
+  locations: Loc[];
+  defaultDate: string;
+}) {
   const [lines, setLines] = useState<Line[]>([blank(defaultDate)]);
   const [clientId, setClientId] = useState('');
   const update = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -93,7 +103,14 @@ export function LineEditor({ clients, sites, locations, defaultDate }: { clients
             <legend className="px-1 text-xs font-medium text-ink-muted">Line {i + 1}</legend>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <L id={`${p}-date`} label="Work date">
-                <input id={`${p}-date`} type="date" required value={l.serviceDate} onChange={(e) => update(i, { serviceDate: e.target.value })} className={inputClass} />
+                <input
+                  id={`${p}-date`}
+                  type="date"
+                  required
+                  value={l.serviceDate}
+                  onChange={(e) => update(i, { serviceDate: e.target.value })}
+                  className={inputClass}
+                />
               </L>
               <L id={`${p}-site`} label="Site">
                 <select id={`${p}-site`} value={l.siteId} onChange={(e) => update(i, { siteId: e.target.value, workLocationId: '' })} className={inputClass}>
@@ -106,7 +123,13 @@ export function LineEditor({ clients, sites, locations, defaultDate }: { clients
                 </select>
               </L>
               <L id={`${p}-loc`} label="Entrance / field">
-                <select id={`${p}-loc`} value={l.workLocationId} onChange={(e) => update(i, { workLocationId: e.target.value })} className={inputClass} disabled={!l.siteId}>
+                <select
+                  id={`${p}-loc`}
+                  value={l.workLocationId}
+                  onChange={(e) => update(i, { workLocationId: e.target.value })}
+                  className={inputClass}
+                  disabled={!l.siteId}
+                >
                   <option value="">Not confirmed yet</option>
                   {locOptions.map((x) => (
                     <option key={x.id} value={x.id}>
@@ -117,22 +140,65 @@ export function LineEditor({ clients, sites, locations, defaultDate }: { clients
                 </select>
               </L>
               <L id={`${p}-role`} label="Role">
-                <input id={`${p}-role`} value={l.role} onChange={(e) => update(i, { role: e.target.value })} placeholder="e.g. Grader…" autoComplete="off" className={inputClass} />
+                <input
+                  id={`${p}-role`}
+                  value={l.role}
+                  onChange={(e) => update(i, { role: e.target.value })}
+                  placeholder="e.g. Grader…"
+                  autoComplete="off"
+                  className={inputClass}
+                />
               </L>
               <L id={`${p}-req`} label="Requested">
-                <input id={`${p}-req`} type="number" inputMode="numeric" min={0} required value={l.requestedCount} onChange={(e) => update(i, { requestedCount: e.target.value })} className={inputClass} />
+                <input
+                  id={`${p}-req`}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  required
+                  value={l.requestedCount}
+                  onChange={(e) => update(i, { requestedCount: e.target.value })}
+                  className={inputClass}
+                />
               </L>
               <L id={`${p}-min`} label="Minimum acceptable">
-                <input id={`${p}-min`} type="number" inputMode="numeric" min={0} value={l.minimumCount} onChange={(e) => update(i, { minimumCount: e.target.value })} className={inputClass} />
+                <input
+                  id={`${p}-min`}
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  value={l.minimumCount}
+                  onChange={(e) => update(i, { minimumCount: e.target.value })}
+                  className={inputClass}
+                />
               </L>
               <L id={`${p}-skill`} label="Required skill">
-                <input id={`${p}-skill`} value={l.requiredSkill} onChange={(e) => update(i, { requiredSkill: e.target.value })} placeholder="e.g. FLT…" autoComplete="off" className={inputClass} />
+                <input
+                  id={`${p}-skill`}
+                  value={l.requiredSkill}
+                  onChange={(e) => update(i, { requiredSkill: e.target.value })}
+                  placeholder="e.g. FLT…"
+                  autoComplete="off"
+                  className={inputClass}
+                />
               </L>
               <L id={`${p}-team`} label="Team / supervisor">
-                <input id={`${p}-team`} value={l.teamLabel} onChange={(e) => update(i, { teamLabel: e.target.value })} autoComplete="off" className={inputClass} />
+                <input
+                  id={`${p}-team`}
+                  value={l.teamLabel}
+                  onChange={(e) => update(i, { teamLabel: e.target.value })}
+                  autoComplete="off"
+                  className={inputClass}
+                />
               </L>
               <L id={`${p}-arr`} label="Arrive by">
-                <input id={`${p}-arr`} type="time" value={l.arrivalLocal} onChange={(e) => update(i, { arrivalLocal: e.target.value })} className={inputClass} />
+                <input
+                  id={`${p}-arr`}
+                  type="time"
+                  value={l.arrivalLocal}
+                  onChange={(e) => update(i, { arrivalLocal: e.target.value })}
+                  className={inputClass}
+                />
               </L>
               <L id={`${p}-start`} label="Paid start">
                 <input id={`${p}-start`} type="time" value={l.startLocal} onChange={(e) => update(i, { startLocal: e.target.value })} className={inputClass} />
@@ -141,7 +207,12 @@ export function LineEditor({ clients, sites, locations, defaultDate }: { clients
                 <input id={`${p}-end`} type="time" value={l.endLocal} onChange={(e) => update(i, { endLocal: e.target.value })} className={inputClass} />
               </L>
               <L id={`${p}-next`} label="Ends">
-                <select id={`${p}-next`} value={l.endDayOffset} onChange={(e) => update(i, { endDayOffset: e.target.value as '0' | '1' })} className={inputClass}>
+                <select
+                  id={`${p}-next`}
+                  value={l.endDayOffset}
+                  onChange={(e) => update(i, { endDayOffset: e.target.value as '0' | '1' })}
+                  className={inputClass}
+                >
                   <option value="0">Same day</option>
                   <option value="1">Next day (overnight)</option>
                 </select>
@@ -158,7 +229,11 @@ export function LineEditor({ clients, sites, locations, defaultDate }: { clients
           </fieldset>
         );
       })}
-      <button type="button" onClick={() => setLines((ls) => [...ls, { ...blank(ls.at(-1)?.serviceDate ?? defaultDate), siteId: ls.at(-1)?.siteId ?? '' }])} className="self-start rounded-[var(--radius-ui)] border border-hairline-strong px-3 py-1.5 text-sm hover:bg-surface-2">
+      <button
+        type="button"
+        onClick={() => setLines((ls) => [...ls, { ...blank(ls.at(-1)?.serviceDate ?? defaultDate), siteId: ls.at(-1)?.siteId ?? '' }])}
+        className="self-start rounded-[var(--radius-ui)] border border-hairline-strong px-3 py-1.5 text-sm hover:bg-surface-2"
+      >
         Add Another Line
       </button>
     </div>

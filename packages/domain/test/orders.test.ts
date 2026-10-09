@@ -69,7 +69,12 @@ describe('order intake', () => {
     expect(l!.siteId).toBeNull();
     expect(l!.startAt).toBeNull();
     expect(l!.endUnknown).toBe(true);
-    const t = await read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.entityId, l!.id), eq(tasks.type, 'clarify_site'))));
+    const t = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.entityId, l!.id), eq(tasks.type, 'clarify_site'))),
+    );
     expect(t).toHaveLength(1);
   });
 
@@ -78,18 +83,47 @@ describe('order intake', () => {
     const { seed } = world;
     const s = await source(ctx, seed, 'Night shift');
     await expectDomainError(
-      createOrder(ctx, { branchId: seed.branches.north, clientId: seed.clients.coldStore, sourceMessageIds: [s.id], lines: [line(seed, { siteId: seed.sites.coldStore, workLocationId: null, serviceDate: '2026-10-25', arrivalLocal: null, startLocal: '01:30', endLocal: '09:00' })] }),
+      createOrder(ctx, {
+        branchId: seed.branches.north,
+        clientId: seed.clients.coldStore,
+        sourceMessageIds: [s.id],
+        lines: [
+          line(seed, {
+            siteId: seed.sites.coldStore,
+            workLocationId: null,
+            serviceDate: '2026-10-25',
+            arrivalLocal: null,
+            startLocal: '01:30',
+            endLocal: '09:00',
+          }),
+        ],
+      }),
       'VALIDATION_FAILED',
     );
     await expectDomainError(
-      createOrder(ctx, { branchId: seed.branches.north, clientId: seed.clients.coldStore, sourceMessageIds: [s.id], lines: [line(seed, { siteId: seed.sites.coldStore, workLocationId: null, arrivalLocal: null, startLocal: '22:00', endLocal: '06:00' })] }),
+      createOrder(ctx, {
+        branchId: seed.branches.north,
+        clientId: seed.clients.coldStore,
+        sourceMessageIds: [s.id],
+        lines: [line(seed, { siteId: seed.sites.coldStore, workLocationId: null, arrivalLocal: null, startLocal: '22:00', endLocal: '06:00' })],
+      }),
       'VALIDATION_FAILED',
     );
     const ok = await createOrder(ctx, {
       branchId: seed.branches.north,
       clientId: seed.clients.coldStore,
       sourceMessageIds: [s.id],
-      lines: [line(seed, { siteId: seed.sites.coldStore, workLocationId: null, serviceDate: '2026-10-24', arrivalLocal: null, startLocal: '22:00', endLocal: '06:00', endDayOffset: 1 })],
+      lines: [
+        line(seed, {
+          siteId: seed.sites.coldStore,
+          workLocationId: null,
+          serviceDate: '2026-10-24',
+          arrivalLocal: null,
+          startLocal: '22:00',
+          endLocal: '06:00',
+          endDayOffset: 1,
+        }),
+      ],
     });
     const [l] = await read(ctx, (tx) => tx.select().from(orderLines).where(eq(orderLines.orderId, ok.id)));
     // 22:00 BST to 06:00 GMT across the DST change is 9 hours elapsed, not 8.
@@ -101,9 +135,19 @@ describe('order intake', () => {
     const { seed, clock } = world;
     clock.set('2026-10-10T04:40:00Z'); // 05:40 local, work starts 07:00
     const s = await source(ctx, seed, 'Need 3 more at 7 today please', '2026-10-10T05:38:00+01:00');
-    const o = await createOrder(ctx, { branchId: seed.branches.north, clientId: seed.clients.growers, sourceMessageIds: [s.id], lines: [line(seed, { requestedCount: 3 })] });
+    const o = await createOrder(ctx, {
+      branchId: seed.branches.north,
+      clientId: seed.clients.growers,
+      sourceMessageIds: [s.id],
+      lines: [line(seed, { requestedCount: 3 })],
+    });
     expect(o.urgency).toBe('urgent');
-    const [t] = await read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.entityId, o.id), eq(tasks.type, 'late_order_review'))));
+    const [t] = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.entityId, o.id), eq(tasks.type, 'late_order_review'))),
+    );
     expect(t!.ownerMembershipId).toBeNull();
     expect(t!.coverageAlert).toBe(true);
     expect(t!.priority).toBe('urgent');
@@ -130,7 +174,12 @@ describe('conflicts and amendments', () => {
     const [l] = await read(ctx, (tx) => tx.select().from(orderLines).where(eq(orderLines.id, o.lines[0]!.id)));
     expect(l!.startLocal).toBe('07:00:00'); // unchanged until a person decides
     await resolveConflict(ctx, c.id, { resolvedValue: '06:30', note: 'Called Gwen; she confirmed 06:30 arrival' });
-    const open = await read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.entityId, c.id), eq(tasks.state, 'open'))));
+    const open = await read(ctx, (tx) =>
+      tx
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.entityId, c.id), eq(tasks.state, 'open'))),
+    );
     expect(open).toHaveLength(0);
   });
 
@@ -142,7 +191,12 @@ describe('conflicts and amendments', () => {
     const { assignmentIds } = await proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.mira }, { workerId: seed.workers.teodor }] });
     await recordWorkerResponse(ctx, assignmentIds[0]!, { lineVersion: 1, response: 'accepted', channel: 'phone', respondedAt: '2026-10-09T18:05:00+01:00' });
     const s = await source(ctx, seed, 'Actually need 10 tomorrow');
-    const input = { expectedVersion: o.version, sourceMessageIds: [s.id], reason: 'Client increased graders', lineChanges: [{ lineId: l.id, requestedCount: 10 }] };
+    const input = {
+      expectedVersion: o.version,
+      sourceMessageIds: [s.id],
+      reason: 'Client increased graders',
+      lineChanges: [{ lineId: l.id, requestedCount: 10 }],
+    };
     const preview = await previewAmendment(ctx, o.id, input);
     expect(preview.reconfirmations).toHaveLength(0); // count change is not material for workers
     const res = await amendOrder(ctx, o.id, { ...input, acknowledgeImpactToken: preview.token });
@@ -163,7 +217,12 @@ describe('conflicts and amendments', () => {
     const { assignmentIds } = await proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.ralitsa }] });
     await recordWorkerResponse(ctx, assignmentIds[0]!, { lineVersion: 1, response: 'accepted', channel: 'phone', respondedAt: '2026-10-09T18:05:00+01:00' });
     const s = await source(ctx, seed, 'Start at 8 instead');
-    const input = { expectedVersion: o.version, sourceMessageIds: [s.id], reason: 'Later start', lineChanges: [{ lineId: l.id, arrivalLocal: '07:50', startLocal: '08:00' }] };
+    const input = {
+      expectedVersion: o.version,
+      sourceMessageIds: [s.id],
+      reason: 'Later start',
+      lineChanges: [{ lineId: l.id, arrivalLocal: '07:50', startLocal: '08:00' }],
+    };
     const preview = await previewAmendment(ctx, o.id, input);
     expect(preview.reconfirmations.map((r) => r.assignmentId)).toEqual(assignmentIds);
     // A token for different input is refused.
@@ -184,15 +243,30 @@ describe('conflicts and amendments', () => {
     const l = o.lines[0]!;
     const { assignmentIds } = await proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.bozhidar }] });
     const s = await source(ctx, seed, 'Move to the field');
-    const input = { expectedVersion: o.version, sourceMessageIds: [s.id], reason: 'Different site', lineChanges: [{ lineId: l.id, siteId: seed.sites.field, workLocationId: seed.locations.fieldEntrance }] };
+    const input = {
+      expectedVersion: o.version,
+      sourceMessageIds: [s.id],
+      reason: 'Different site',
+      lineChanges: [{ lineId: l.id, siteId: seed.sites.field, workLocationId: seed.locations.fieldEntrance }],
+    };
     const preview = await previewAmendment(ctx, o.id, input);
     expect(preview.staleOffers).toHaveLength(1);
     await amendOrder(ctx, o.id, { ...input, acknowledgeImpactToken: preview.token });
-    const r = await recordWorkerResponse(ctx, assignmentIds[0]!, { lineVersion: 1, response: 'accepted', channel: 'whatsapp_manual', respondedAt: '2026-10-09T19:00:00+01:00' });
+    const r = await recordWorkerResponse(ctx, assignmentIds[0]!, {
+      lineVersion: 1,
+      response: 'accepted',
+      channel: 'whatsapp_manual',
+      respondedAt: '2026-10-09T19:00:00+01:00',
+    });
     expect(r.outcome).toBe('stale');
     const [a] = await read(ctx, (tx) => tx.select().from(assignments).where(eq(assignments.id, assignmentIds[0]!)));
     expect(a!.state).toBe('proposed');
-    const r2 = await recordWorkerResponse(ctx, assignmentIds[0]!, { lineVersion: 2, response: 'accepted', channel: 'phone', respondedAt: '2026-10-09T19:05:00+01:00' });
+    const r2 = await recordWorkerResponse(ctx, assignmentIds[0]!, {
+      lineVersion: 2,
+      response: 'accepted',
+      channel: 'phone',
+      respondedAt: '2026-10-09T19:05:00+01:00',
+    });
     expect(r2.outcome).toBe('applied');
   });
 });
@@ -203,17 +277,28 @@ describe('staffing', () => {
     const { seed } = world;
     const o = await acceptedOrder(ctx, seed, [line(seed, { requestedCount: 3, startLocal: '12:00', arrivalLocal: '11:50', endLocal: '16:00' })]);
     const l = o.lines[0]!;
-    await expectDomainError(proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.nevena }, { workerId: seed.workers.nevena }] }), 'VALIDATION_FAILED');
+    await expectDomainError(
+      proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.nevena }, { workerId: seed.workers.nevena }] }),
+      'VALIDATION_FAILED',
+    );
     await proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.nevena }, { workerId: seed.workers.desislava }] });
     await expectDomainError(proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.nevena }] }), 'VALIDATION_FAILED');
-    await expectDomainError(proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.ognyan }, { workerId: seed.workers.radka }] }), 'CAPACITY_EXCEEDED');
+    await expectDomainError(
+      proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.ognyan }, { workerId: seed.workers.radka }] }),
+      'CAPACITY_EXCEEDED',
+    );
   });
 
   it('cannot assign before the agency has accepted a quantity', async () => {
     const ctx = await world.as('coordinator');
     const { seed } = world;
     const s = await source(ctx, seed, 'two graders');
-    const o = await createOrder(ctx, { branchId: seed.branches.north, clientId: seed.clients.growers, sourceMessageIds: [s.id], lines: [line(seed, { requestedCount: 2, serviceDate: '2026-10-12' })] });
+    const o = await createOrder(ctx, {
+      branchId: seed.branches.north,
+      clientId: seed.clients.growers,
+      sourceMessageIds: [s.id],
+      lines: [line(seed, { requestedCount: 2, serviceDate: '2026-10-12' })],
+    });
     const [l] = await read(ctx, (tx) => tx.select().from(orderLines).where(eq(orderLines.orderId, o.id)));
     await expectDomainError(proposeAssignments(ctx, l!.id, { workers: [{ workerId: seed.workers.mira }] }), 'INVALID_STATE');
     await expectDomainError(decideAcceptance(ctx, o.id, { expectedVersion: 1, decisions: [{ lineId: l!.id, acceptedCount: 3 }] }), 'VALIDATION_FAILED');
@@ -244,7 +329,9 @@ describe('staffing', () => {
     const b = await world.as('coordinator2');
     const { seed } = world;
     const o1 = await acceptedOrder(a, seed, [line(seed, { requestedCount: 1, serviceDate: '2026-10-15' })]);
-    const o2 = await acceptedOrder(b, seed, [line(seed, { requestedCount: 1, serviceDate: '2026-10-15', role: 'Packer', startLocal: '09:00', arrivalLocal: '08:50' })]);
+    const o2 = await acceptedOrder(b, seed, [
+      line(seed, { requestedCount: 1, serviceDate: '2026-10-15', role: 'Packer', startLocal: '09:00', arrivalLocal: '08:50' }),
+    ]);
     const results = await Promise.allSettled([
       proposeAssignments(a, o1.lines[0]!.id, { workers: [{ workerId: seed.workers.kaloyan }] }),
       proposeAssignments(b, o2.lines[0]!.id, { workers: [{ workerId: seed.workers.kaloyan }] }),
@@ -264,7 +351,13 @@ describe('staffing', () => {
     const l = o.lines[0]!;
     const { assignmentIds } = await proposeAssignments(ctx, l.id, { workers: [{ workerId: seed.workers.mira }, { workerId: seed.workers.teodor }] });
     await recordWorkerResponse(ctx, assignmentIds[0]!, { lineVersion: 1, response: 'declined', channel: 'phone', respondedAt: '2026-10-09T18:30:00+01:00' });
-    const open = () => read(ctx, (tx) => tx.select().from(tasks).where(and(eq(tasks.entityId, l.id), eq(tasks.type, 'find_replacement'), eq(tasks.state, 'open'))));
+    const open = () =>
+      read(ctx, (tx) =>
+        tx
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.entityId, l.id), eq(tasks.type, 'find_replacement'), eq(tasks.state, 'open'))),
+      );
     expect(await open()).toHaveLength(1);
     await recordReplacementDeclined(ctx, l.id, 'Supervisor said they will manage with one');
     expect(await open()).toHaveLength(0);

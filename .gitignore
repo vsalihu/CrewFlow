@@ -13,3 +13,4 @@ imports/
 *.zip
 .dev-users.json
 next-env.d.ts
+apps/web/e2e/.dev-users.json

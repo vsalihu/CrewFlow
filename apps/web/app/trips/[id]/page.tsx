@@ -3,7 +3,7 @@ import { getTripDetail } from '@cds/domain';
 import { StateBadge } from '@/components/Status';
 import { Badge, Button, Empty, Field, Flash, Panel, inputClass, td, th } from '@/components/ui';
 import { fmtDate, fmtDateTime, fmtTime, label } from '@/lib/format';
-import { requireContext } from '@/lib/session';
+import { orNotFound, requireContext } from '@/lib/session';
 import {
   addPassengerAction,
   cancelTripAction,
@@ -17,11 +17,17 @@ import {
 
 export const dynamic = 'force-dynamic';
 
-export default async function TripPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
+export default async function TripPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const ctx = await requireContext();
   const { id } = await params;
   const sp = await searchParams;
-  const d = await getTripDetail(ctx, id);
+  const d = await orNotFound(getTripDetail(ctx, id));
   const { trip, revision: rev } = d;
   const errors = d.violations.filter((v) => v.severity === 'error');
   const warnings = d.violations.filter((v) => v.severity === 'warning');
@@ -86,10 +92,28 @@ export default async function TripPage({ params, searchParams }: { params: Promi
                         <div className="font-medium">{s.label}</div>
                         <div className="text-xs text-ink-subtle">{label(s.purpose)}</div>
                       </td>
-                      <td className={`${td} text-xs`}>{s.location ? <>{s.location.name} {s.location.verifiedAt ? <Badge tone="ok">verified</Badge> : <Badge tone="bad">unverified</Badge>}</> : 'None'}</td>
                       <td className={`${td} text-xs`}>
-                        {d.passengers.filter(({ p }) => p.boardStopSeq === s.seq).map(({ name }) => `+ ${name}`).join(', ')}
-                        {d.passengers.filter(({ p }) => p.alightStopSeq === s.seq).length ? <div className="text-ink-subtle">{d.passengers.filter(({ p }) => p.alightStopSeq === s.seq).map(({ name }) => `− ${name}`).join(', ')}</div> : null}
+                        {s.location ? (
+                          <>
+                            {s.location.name} {s.location.verifiedAt ? <Badge tone="ok">verified</Badge> : <Badge tone="bad">unverified</Badge>}
+                          </>
+                        ) : (
+                          'None'
+                        )}
+                      </td>
+                      <td className={`${td} text-xs`}>
+                        {d.passengers
+                          .filter(({ p }) => p.boardStopSeq === s.seq)
+                          .map(({ name }) => `+ ${name}`)
+                          .join(', ')}
+                        {d.passengers.filter(({ p }) => p.alightStopSeq === s.seq).length ? (
+                          <div className="text-ink-subtle">
+                            {d.passengers
+                              .filter(({ p }) => p.alightStopSeq === s.seq)
+                              .map(({ name }) => `− ${name}`)
+                              .join(', ')}
+                          </div>
+                        ) : null}
                       </td>
                       <td className={`${td} num text-right ${capacity !== null && s.onBoardAfter > capacity ? 'font-semibold text-bad' : ''}`}>
                         {s.seq < d.stops.length ? `${s.onBoardAfter} / ${capacity ?? '?'}` : ''}
@@ -151,7 +175,8 @@ export default async function TripPage({ params, searchParams }: { params: Promi
               <p>
                 {currentAcceptance ? (
                   <>
-                    Revision {rev.revisionNo}: <StateBadge state={currentAcceptance.decision} /> by {label(currentAcceptance.method)} at {fmtDateTime(currentAcceptance.decidedAt)}
+                    Revision {rev.revisionNo}: <StateBadge state={currentAcceptance.decision} /> by {label(currentAcceptance.method)} at{' '}
+                    {fmtDateTime(currentAcceptance.decidedAt)}
                   </>
                 ) : (
                   <>The driver has not answered for revision {rev.revisionNo}.</>

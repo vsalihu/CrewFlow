@@ -28,7 +28,12 @@ export default async function OperationsPage({ searchParams }: { searchParams: P
         <h1 className="text-lg font-semibold">Operations</h1>
         <nav aria-label="Day" className="flex rounded-[var(--radius-ui)] border border-hairline-strong bg-surface p-0.5 text-sm">
           {(['today', 'tomorrow'] as const).map((d) => (
-            <Link key={d} href={q({ day: d })} aria-current={day === d ? 'page' : undefined} className={`rounded px-3 py-1 capitalize ${day === d ? 'bg-accent text-on-accent' : 'text-ink-muted hover:bg-surface-2'}`}>
+            <Link
+              key={d}
+              href={q({ day: d })}
+              aria-current={day === d ? 'page' : undefined}
+              className={`rounded px-3 py-1 capitalize ${day === d ? 'bg-accent text-on-accent' : 'text-ink-muted hover:bg-surface-2'}`}
+            >
               {d}
             </Link>
           ))}
@@ -39,13 +44,25 @@ export default async function OperationsPage({ searchParams }: { searchParams: P
           <label htmlFor="date" className="sr-only">
             Date
           </label>
-          <input key={date} id="date" name="date" type="date" defaultValue={date} className="h-8 rounded-[var(--radius-ui)] border border-hairline-strong bg-surface px-2" />
+          <input
+            key={date}
+            id="date"
+            name="date"
+            type="date"
+            defaultValue={date}
+            className="h-8 rounded-[var(--radius-ui)] border border-hairline-strong bg-surface px-2"
+          />
           <button className="h-8 rounded-[var(--radius-ui)] border border-hairline-strong bg-surface px-3 hover:bg-surface-2">Go</button>
         </form>
         {ref.branches.length > 1 ? (
           <nav aria-label="Branch" className="flex gap-1 text-sm">
             {ref.branches.map((b) => (
-              <Link key={b.id} href={`/operations?${new URLSearchParams({ branch: b.id, day }).toString()}`} aria-current={b.id === branchId ? 'page' : undefined} className={`rounded px-2 py-1 ${b.id === branchId ? 'bg-surface-2 font-medium' : 'text-ink-muted hover:bg-surface-2'}`}>
+              <Link
+                key={b.id}
+                href={`/operations?${new URLSearchParams({ branch: b.id, day }).toString()}`}
+                aria-current={b.id === branchId ? 'page' : undefined}
+                className={`rounded px-2 py-1 ${b.id === branchId ? 'bg-surface-2 font-medium' : 'text-ink-muted hover:bg-surface-2'}`}
+              >
                 {b.name}
               </Link>
             ))}

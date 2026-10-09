@@ -37,7 +37,15 @@ export function TaskList({ tasks, back }: { tasks: TaskRow[]; back: string }) {
               {t.priority !== 'normal' ? <Badge tone={t.priority === 'urgent' ? 'bad' : 'warn'}>{t.priority}</Badge> : null}
               {t.coverageAlert ? <Badge tone="bad">no one on duty</Badge> : null}
             </div>
-            <span className="break-words">{href ? <Link href={href} className="hover:underline">{t.title}</Link> : t.title}</span>
+            <span className="break-words">
+              {href ? (
+                <Link href={href} className="hover:underline">
+                  {t.title}
+                </Link>
+              ) : (
+                t.title
+              )}
+            </span>
             <span className="text-xs text-ink-subtle">
               {t.ownerName ?? 'Unowned'}
               {t.dueAt ? ` · due ${fmtDateTime(t.dueAt)}` : ''}
@@ -51,8 +59,18 @@ export function TaskList({ tasks, back }: { tasks: TaskRow[]; back: string }) {
                 <label htmlFor={`outcome-${t.id}`} className="sr-only">
                   Outcome
                 </label>
-                <textarea id={`outcome-${t.id}`} name="outcome" required minLength={5} rows={2} placeholder="Who you spoke to and what was agreed…" className="w-full rounded-[var(--radius-ui)] border border-hairline-strong bg-surface p-2 text-sm" />
-                <button className="self-start rounded-[var(--radius-ui)] border border-hairline-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2">Complete Task</button>
+                <textarea
+                  id={`outcome-${t.id}`}
+                  name="outcome"
+                  required
+                  minLength={5}
+                  rows={2}
+                  placeholder="Who you spoke to and what was agreed…"
+                  className="w-full rounded-[var(--radius-ui)] border border-hairline-strong bg-surface p-2 text-sm"
+                />
+                <button className="self-start rounded-[var(--radius-ui)] border border-hairline-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2">
+                  Complete Task
+                </button>
               </form>
             </details>
           </li>

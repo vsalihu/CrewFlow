@@ -25,7 +25,13 @@ export function useWorld(startIso = '2026-10-09T17:00:00Z'): World {
   return world;
 }
 
-export async function source(ctx: ServiceContext, seed: Seed, text: string, receivedAt = '2026-10-09T16:48:00+01:00', kind: 'pasted_message' | 'phone_note' = 'pasted_message') {
+export async function source(
+  ctx: ServiceContext,
+  seed: Seed,
+  text: string,
+  receivedAt = '2026-10-09T16:48:00+01:00',
+  kind: 'pasted_message' | 'phone_note' = 'pasted_message',
+) {
   return captureSource(ctx, {
     branchId: seed.branches.north,
     kind,

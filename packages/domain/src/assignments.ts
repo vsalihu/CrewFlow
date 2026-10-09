@@ -62,7 +62,11 @@ async function lineContext(tx: Tx, lineId: string, lock = false): Promise<LineCo
  * Hard-filter checks for a set of workers against one line. Returns per-worker exclusions
  * (each with a plain-English reason) and warnings.
  */
-async function checkWorkers(tx: Tx, lc: LineContext, workerIds: string[]): Promise<Map<string, { exclusions: CandidateExclusion[]; warnings: string[]; readiness: ReadinessResult }>> {
+async function checkWorkers(
+  tx: Tx,
+  lc: LineContext,
+  workerIds: string[],
+): Promise<Map<string, { exclusions: CandidateExclusion[]; warnings: string[]; readiness: ReadinessResult }>> {
   const { line, interval } = lc;
   const out = new Map<string, { exclusions: CandidateExclusion[]; warnings: string[]; readiness: ReadinessResult }>();
   const ws = await tx.select().from(workers).where(inArray(workers.id, workerIds));
@@ -76,7 +80,10 @@ async function checkWorkers(tx: Tx, lc: LineContext, workerIds: string[]): Promi
     const endLocal = hhmm(line.endLocal);
     if (latest) {
       if (endLocal && (line.endDayOffset > 0 || endLocal > latest)) {
-        r.exclusions.push({ code: 'WORKER_UNAVAILABLE', message: `Must leave by ${latest}; this shift ends at ${endLocal}${line.endDayOffset ? ' the next day' : ''}.` });
+        r.exclusions.push({
+          code: 'WORKER_UNAVAILABLE',
+          message: `Must leave by ${latest}; this shift ends at ${endLocal}${line.endDayOffset ? ' the next day' : ''}.`,
+        });
       } else if (!endLocal) {
         r.warnings.push(`Must leave by ${latest}; the finish time is not known yet.`);
       }
@@ -91,7 +98,13 @@ async function checkWorkers(tx: Tx, lc: LineContext, workerIds: string[]): Promi
   const active = await tx
     .select({ workerId: assignments.workerId })
     .from(assignments)
-    .where(and(eq(assignments.lineId, line.id), inArray(assignments.workerId, workerIds), inArray(assignments.state, ['proposed', 'offered', 'accepted', 'reconfirmation_required', 'arrived'])));
+    .where(
+      and(
+        eq(assignments.lineId, line.id),
+        inArray(assignments.workerId, workerIds),
+        inArray(assignments.state, ['proposed', 'offered', 'accepted', 'reconfirmation_required', 'arrived']),
+      ),
+    );
   const onLine = new Set(active.map((a) => a.workerId));
   for (const id of onLine) out.get(id)!.exclusions.push({ code: 'VALIDATION_FAILED', message: 'Already on this shift line.' });
 
@@ -118,14 +131,22 @@ async function checkWorkers(tx: Tx, lc: LineContext, workerIds: string[]): Promi
     const unavailable = await tx
       .select({ workerId: workerAvailability.workerId, note: workerAvailability.note })
       .from(workerAvailability)
-      .where(and(inArray(workerAvailability.workerId, workerIds), eq(workerAvailability.kind, 'unavailable'), sql`${workerAvailability.during} && ${range}::tstzrange`));
-    for (const u of unavailable) out.get(u.workerId)!.exclusions.push({ code: 'WORKER_UNAVAILABLE', message: `Marked unavailable${u.note ? `: ${u.note}` : ''}.` });
+      .where(
+        and(
+          inArray(workerAvailability.workerId, workerIds),
+          eq(workerAvailability.kind, 'unavailable'),
+          sql`${workerAvailability.during} && ${range}::tstzrange`,
+        ),
+      );
+    for (const u of unavailable)
+      out.get(u.workerId)!.exclusions.push({ code: 'WORKER_UNAVAILABLE', message: `Marked unavailable${u.note ? `: ${u.note}` : ''}.` });
     if (interval.uncertain) for (const id of workerIds) out.get(id)!.warnings.push('Finish time unknown: a provisional interval is reserved.');
   }
 
   if (line.requiredSkill) {
     const have = await workersWithSkill(tx, workerIds, line.requiredSkill, line.serviceDate);
-    for (const id of workerIds) if (!have.has(id)) out.get(id)!.exclusions.push({ code: 'VALIDATION_FAILED', message: `No current ${line.requiredSkill} skill on record.` });
+    for (const id of workerIds)
+      if (!have.has(id)) out.get(id)!.exclusions.push({ code: 'VALIDATION_FAILED', message: `No current ${line.requiredSkill} skill on record.` });
   }
 
   const readiness = await evaluateReadiness(tx, { workerIds, siteId: line.siteId, clientId: lc.clientId, date: line.serviceDate });
@@ -189,26 +210,40 @@ export async function listCandidates(ctx: ServiceContext, lineId: string, opts: 
  * worker's time so two coordinators cannot both commit the same person. Capacity is checked
  * against the agency-accepted count under a lock on the line.
  */
-export async function proposeAssignments(ctx: ServiceContext, lineId: string, raw: ProposeAssignmentsInput, idempotencyKey?: string): Promise<{ assignmentIds: string[] }> {
+export async function proposeAssignments(
+  ctx: ServiceContext,
+  lineId: string,
+  raw: ProposeAssignmentsInput,
+  idempotencyKey?: string,
+): Promise<{ assignmentIds: string[] }> {
   const input = proposeAssignmentsSchema.parse(raw);
   return command(ctx, { operation: 'assignment.propose', idempotencyKey, input: { lineId, ...input } }, async (tx) => {
     const lc = await lineContext(tx, lineId, true);
     const { line, order } = lc;
     requireCapability(ctx.actor, 'assignment.propose', line.branchId);
-    if (line.lineState !== 'open' || ['cancelled', 'closed', 'declined'].includes(order.requestState)) throw new DomainError('INVALID_STATE', 'This shift line is not open.');
+    if (line.lineState !== 'open' || ['cancelled', 'closed', 'declined'].includes(order.requestState))
+      throw new DomainError('INVALID_STATE', 'This shift line is not open.');
     if (line.acceptedCount === null) throw new DomainError('INVALID_STATE', 'Record how many the agency accepts for this line before assigning workers.');
     if (!lc.interval) throw new DomainError('VALIDATION_FAILED', 'The start time is not resolved yet, so workers cannot be reserved.');
 
     const ids = input.workers.map((w) => w.workerId);
     const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
-    if (dupes.length) throw new DomainError('VALIDATION_FAILED', 'The same worker appears more than once in this request.', { violations: dupes.map((d) => ({ code: 'VALIDATION_FAILED', message: 'Duplicate worker', subject: d })) });
+    if (dupes.length)
+      throw new DomainError('VALIDATION_FAILED', 'The same worker appears more than once in this request.', {
+        violations: dupes.map((d) => ({ code: 'VALIDATION_FAILED', message: 'Duplicate worker', subject: d })),
+      });
 
     const [{ n }] = (await tx
       .select({ n: sql<number>`count(*)::int` })
       .from(assignments)
-      .where(and(eq(assignments.lineId, line.id), inArray(assignments.state, ['proposed', 'offered', 'accepted', 'reconfirmation_required', 'arrived'])))) as [{ n: number }];
+      .where(and(eq(assignments.lineId, line.id), inArray(assignments.state, ['proposed', 'offered', 'accepted', 'reconfirmation_required', 'arrived'])))) as [
+      { n: number },
+    ];
     if (n + ids.length > line.acceptedCount) {
-      throw new DomainError('CAPACITY_EXCEEDED', `Only ${Math.max(0, line.acceptedCount - n)} place(s) left: ${line.acceptedCount} accepted, ${n} already assigned.`);
+      throw new DomainError(
+        'CAPACITY_EXCEEDED',
+        `Only ${Math.max(0, line.acceptedCount - n)} place(s) left: ${line.acceptedCount} accepted, ${n} already assigned.`,
+      );
     }
 
     const checks = await checkWorkers(tx, lc, ids);
@@ -315,13 +350,18 @@ export async function recordWorkerResponse(
         dedupeKey: `reconfirm:${a.id}`,
       });
     } else if (input.response === 'accepted') {
-      const readiness = (await evaluateReadiness(tx, { workerIds: [a.workerId], siteId: line.siteId, clientId: order.clientId, date: line.serviceDate })).get(a.workerId)!;
+      const readiness = (await evaluateReadiness(tx, { workerIds: [a.workerId], siteId: line.siteId, clientId: order.clientId, date: line.serviceDate })).get(
+        a.workerId,
+      )!;
       const [reservation] = await tx
         .select({ id: resourceReservations.id })
         .from(resourceReservations)
         .where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
       if (!reservation) {
-        throw new DomainError('RESOURCE_CONFLICT', 'This worker no longer has a valid reservation for this shift (it clashed after a change). Resolve the clash first.');
+        throw new DomainError(
+          'RESOURCE_CONFLICT',
+          'This worker no longer has a valid reservation for this shift (it clashed after a change). Resolve the clash first.',
+        );
       }
       if (readiness.blocking.length) {
         outcome = 'blocked_readiness';
@@ -345,23 +385,47 @@ export async function recordWorkerResponse(
         for (const leg of ['outbound', 'return'] as const) {
           await tx
             .insert(transportRequirements)
-            .values({ organisationId: ctx.actor.organisationId, assignmentId: a.id, leg, mode: 'unresolved', rawLabel: a.rawTransportLabel, createdBy: actorId(ctx.actor) })
+            .values({
+              organisationId: ctx.actor.organisationId,
+              assignmentId: a.id,
+              leg,
+              mode: 'unresolved',
+              rawLabel: a.rawTransportLabel,
+              createdBy: actorId(ctx.actor),
+            })
             .onConflictDoNothing();
         }
         const [client] = await tx.select({ requires: clients.requiresExternalBooking }).from(clients).where(eq(clients.id, order.clientId));
         if (client?.requires) {
           await tx
             .insert(externalBookings)
-            .values({ organisationId: ctx.actor.organisationId, branchId: a.branchId, assignmentId: a.id, provider: 'joinedup', state: 'pending_entry', lineVersion: line.lineVersion, createdBy: actorId(ctx.actor) })
+            .values({
+              organisationId: ctx.actor.organisationId,
+              branchId: a.branchId,
+              assignmentId: a.id,
+              provider: 'joinedup',
+              state: 'pending_entry',
+              lineVersion: line.lineVersion,
+              createdBy: actorId(ctx.actor),
+            })
             .onConflictDoNothing();
         }
         await enqueue(tx, ctx, { eventType: 'assignment.accepted', entityType: 'assignment', entityId: a.id, entityRevision: line.lineVersion });
       }
     } else if (input.response === 'declined') {
       state = 'declined';
-      await tx.update(assignments).set({ state, endReason: 'Worker declined', updatedAt: nowOf(ctx), version: a.version + 1 }).where(eq(assignments.id, a.id));
-      await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
-      await tx.update(transportRequirements).set({ mode: 'not_required', arrangementNote: 'Worker declined' }).where(eq(transportRequirements.assignmentId, a.id));
+      await tx
+        .update(assignments)
+        .set({ state, endReason: 'Worker declined', updatedAt: nowOf(ctx), version: a.version + 1 })
+        .where(eq(assignments.id, a.id));
+      await tx
+        .update(resourceReservations)
+        .set({ active: false })
+        .where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
+      await tx
+        .update(transportRequirements)
+        .set({ mode: 'not_required', arrangementNote: 'Worker declined' })
+        .where(eq(transportRequirements.assignmentId, a.id));
       await closeTasksByKey(tx, ctx, `reconfirm:${a.id}`, 'Worker declined', 'cancelled');
       if (!line.replacementDeclinedAt) {
         await createTask(tx, ctx, {
@@ -388,7 +452,13 @@ export async function recordWorkerResponse(
       evidenceNote: input.evidenceNote ?? null,
       outcome,
     });
-    await audit(tx, ctx, { action: 'assignment.response_recorded', entityType: 'assignment', entityId: a.id, before: { state: a.state }, after: { state, outcome, response: input.response, lineVersion: input.lineVersion } });
+    await audit(tx, ctx, {
+      action: 'assignment.response_recorded',
+      entityType: 'assignment',
+      entityId: a.id,
+      before: { state: a.state },
+      after: { state, outcome, response: input.response, lineVersion: input.lineVersion },
+    });
     return { outcome, state };
   });
 }
@@ -399,9 +469,16 @@ export async function releaseAssignment(ctx: ServiceContext, assignmentId: strin
     const [a] = await tx.select().from(assignments).where(eq(assignments.id, assignmentId)).for('update');
     if (!a) throw notFound('Assignment');
     requireCapability(ctx.actor, 'assignment.propose', a.branchId);
-    if (!['proposed', 'offered', 'accepted', 'reconfirmation_required'].includes(a.state)) throw new DomainError('INVALID_STATE', `This assignment is ${a.state}.`);
-    await tx.update(assignments).set({ state: 'cancelled', endReason: reason, updatedAt: nowOf(ctx), version: a.version + 1 }).where(eq(assignments.id, a.id));
-    await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
+    if (!['proposed', 'offered', 'accepted', 'reconfirmation_required'].includes(a.state))
+      throw new DomainError('INVALID_STATE', `This assignment is ${a.state}.`);
+    await tx
+      .update(assignments)
+      .set({ state: 'cancelled', endReason: reason, updatedAt: nowOf(ctx), version: a.version + 1 })
+      .where(eq(assignments.id, a.id));
+    await tx
+      .update(resourceReservations)
+      .set({ active: false })
+      .where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
     if (a.state === 'accepted' || a.state === 'reconfirmation_required' || a.state === 'offered') {
       const [w] = await tx.select({ name: workers.displayName }).from(workers).where(eq(workers.id, a.workerId));
       await createTask(tx, ctx, {

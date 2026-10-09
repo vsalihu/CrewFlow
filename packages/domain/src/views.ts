@@ -35,7 +35,11 @@ import { validateTripRevision } from './transport';
 /** Branches, clients, sites, locations, staff, drivers and vehicles visible to the actor. */
 export async function referenceData(ctx: ServiceContext) {
   return read(ctx, async (tx) => {
-    const bs = await tx.select().from(branches).where(inArray(branches.id, visibleBranchIds(ctx.actor).length ? visibleBranchIds(ctx.actor) : ['00000000-0000-0000-0000-000000000000'])).orderBy(asc(branches.name));
+    const bs = await tx
+      .select()
+      .from(branches)
+      .where(inArray(branches.id, visibleBranchIds(ctx.actor).length ? visibleBranchIds(ctx.actor) : ['00000000-0000-0000-0000-000000000000']))
+      .orderBy(asc(branches.name));
     const cs = await tx.select().from(clients).where(eq(clients.status, 'active')).orderBy(asc(clients.displayName));
     const ss = await tx.select().from(sites).where(eq(sites.active, true)).orderBy(asc(sites.canonicalName));
     const ls = await tx.select().from(workLocations).orderBy(asc(workLocations.name));
@@ -55,7 +59,14 @@ export async function listTrips(ctx: ServiceContext, q: { branchId: string; date
   requireCapability(ctx.actor, 'trip.read', q.branchId);
   return read(ctx, async (tx) => {
     const rows = await tx
-      .select({ t: trips, driverName: drivers.displayName, vehicle: vehicles.identifier, capacity: vehicles.passengerCapacity, revId: tripRevisions.id, departure: tripRevisions.plannedDepartureAt })
+      .select({
+        t: trips,
+        driverName: drivers.displayName,
+        vehicle: vehicles.identifier,
+        capacity: vehicles.passengerCapacity,
+        revId: tripRevisions.id,
+        departure: tripRevisions.plannedDepartureAt,
+      })
       .from(trips)
       .innerJoin(tripRevisions, and(eq(tripRevisions.tripId, trips.id), eq(tripRevisions.revisionNo, trips.currentRevision)))
       .leftJoin(drivers, eq(drivers.id, tripRevisions.driverId))
@@ -63,7 +74,16 @@ export async function listTrips(ctx: ServiceContext, q: { branchId: string; date
       .where(and(eq(trips.branchId, q.branchId), eq(trips.serviceDate, q.date)))
       .orderBy(asc(trips.legType), asc(tripRevisions.plannedDepartureAt));
     const counts = rows.length
-      ? await tx.select({ rev: tripPassengers.tripRevisionId, n: sql<number>`count(*)::int` }).from(tripPassengers).where(inArray(tripPassengers.tripRevisionId, rows.map((r) => r.revId))).groupBy(tripPassengers.tripRevisionId)
+      ? await tx
+          .select({ rev: tripPassengers.tripRevisionId, n: sql<number>`count(*)::int` })
+          .from(tripPassengers)
+          .where(
+            inArray(
+              tripPassengers.tripRevisionId,
+              rows.map((r) => r.revId),
+            ),
+          )
+          .groupBy(tripPassengers.tripRevisionId)
       : [];
     return rows.map((r) => ({ ...r, passengers: counts.find((c) => c.rev === r.revId)?.n ?? 0 }));
   });
@@ -74,13 +94,30 @@ export async function transportNeeds(ctx: ServiceContext, q: { branchId: string;
   requireCapability(ctx.actor, 'trip.read', q.branchId);
   return read(ctx, async (tx) => {
     const rows = await tx
-      .select({ assignmentId: assignments.id, workerId: workers.id, workerName: workers.displayName, reference: orders.reference, lineNo: orderLines.lineNo, siteName: sites.canonicalName, arrivalAt: orderLines.arrivalAt, endAt: orderLines.endAt, state: assignments.state, rawLabel: assignments.rawTransportLabel })
+      .select({
+        assignmentId: assignments.id,
+        workerId: workers.id,
+        workerName: workers.displayName,
+        reference: orders.reference,
+        lineNo: orderLines.lineNo,
+        siteName: sites.canonicalName,
+        arrivalAt: orderLines.arrivalAt,
+        endAt: orderLines.endAt,
+        state: assignments.state,
+        rawLabel: assignments.rawTransportLabel,
+      })
       .from(assignments)
       .innerJoin(orderLines, eq(orderLines.id, assignments.lineId))
       .innerJoin(orders, eq(orders.id, assignments.orderId))
       .innerJoin(workers, eq(workers.id, assignments.workerId))
       .leftJoin(sites, eq(sites.id, orderLines.siteId))
-      .where(and(eq(orderLines.branchId, q.branchId), eq(orderLines.serviceDate, q.date), inArray(assignments.state, ['accepted', 'reconfirmation_required', 'arrived'])))
+      .where(
+        and(
+          eq(orderLines.branchId, q.branchId),
+          eq(orderLines.serviceDate, q.date),
+          inArray(assignments.state, ['accepted', 'reconfirmation_required', 'arrived']),
+        ),
+      )
       .orderBy(asc(orderLines.arrivalAt), asc(workers.displayName));
     const reqs = rows.length
       ? await tx
@@ -88,7 +125,12 @@ export async function transportNeeds(ctx: ServiceContext, q: { branchId: string;
           .from(transportRequirements)
           .leftJoin(trips, eq(trips.id, transportRequirements.tripId))
           .leftJoin(memberships, eq(memberships.id, transportRequirements.accountableMembershipId))
-          .where(inArray(transportRequirements.assignmentId, rows.map((r) => r.assignmentId)))
+          .where(
+            inArray(
+              transportRequirements.assignmentId,
+              rows.map((r) => r.assignmentId),
+            ),
+          )
       : [];
     return rows.map((r) => ({
       ...r,
@@ -129,7 +171,11 @@ export async function getTripDetail(ctx: ServiceContext, tripId: string) {
     });
     const acceptances = await tx.select().from(tripAcceptances).where(eq(tripAcceptances.tripId, trip.id)).orderBy(desc(tripAcceptances.createdAt));
     const violations = await validateTripRevision(tx, trip, rev);
-    const drafts = await tx.select().from(messageDrafts).where(and(eq(messageDrafts.entityType, 'trip'), eq(messageDrafts.entityId, trip.id))).orderBy(desc(messageDrafts.createdAt));
+    const drafts = await tx
+      .select()
+      .from(messageDrafts)
+      .where(and(eq(messageDrafts.entityType, 'trip'), eq(messageDrafts.entityId, trip.id)))
+      .orderBy(desc(messageDrafts.createdAt));
     const onTrip = new Set(passengers.map(({ p }) => p.workerId));
     const available = (
       await tx
@@ -138,10 +184,28 @@ export async function getTripDetail(ctx: ServiceContext, tripId: string) {
         .innerJoin(orderLines, eq(orderLines.id, assignments.lineId))
         .innerJoin(orders, eq(orders.id, assignments.orderId))
         .innerJoin(workers, eq(workers.id, assignments.workerId))
-        .where(and(eq(orderLines.serviceDate, trip.serviceDate), eq(orderLines.branchId, trip.branchId), inArray(assignments.state, ['accepted', 'reconfirmation_required'])))
+        .where(
+          and(
+            eq(orderLines.serviceDate, trip.serviceDate),
+            eq(orderLines.branchId, trip.branchId),
+            inArray(assignments.state, ['accepted', 'reconfirmation_required']),
+          ),
+        )
         .orderBy(asc(workers.displayName))
     ).filter((a) => !onTrip.has(a.workerId));
-    return { trip, revision: rev, revisions, driver: driver ?? null, vehicle: vehicle ?? null, stops: stopRows, passengers, acceptances, violations, drafts, available };
+    return {
+      trip,
+      revision: rev,
+      revisions,
+      driver: driver ?? null,
+      vehicle: vehicle ?? null,
+      stops: stopRows,
+      passengers,
+      acceptances,
+      violations,
+      drafts,
+      available,
+    };
   });
 }
 
@@ -177,7 +241,13 @@ export async function searchWorkers(ctx: ServiceContext, q: string) {
       .from(assignments)
       .innerJoin(orderLines, eq(orderLines.id, assignments.lineId))
       .innerJoin(orders, eq(orders.id, assignments.orderId))
-      .where(and(inArray(assignments.workerId, ids), sql`${orderLines.serviceDate} >= ${today}`, inArray(assignments.state, ['proposed', 'offered', 'accepted', 'reconfirmation_required'])))
+      .where(
+        and(
+          inArray(assignments.workerId, ids),
+          sql`${orderLines.serviceDate} >= ${today}`,
+          inArray(assignments.state, ['proposed', 'offered', 'accepted', 'reconfirmation_required']),
+        ),
+      )
       .orderBy(asc(orderLines.serviceDate));
     return rows.map((w) => ({
       worker: w,
@@ -211,8 +281,14 @@ export async function listHandovers(ctx: ServiceContext, branchId: string) {
   return read(ctx, async (tx) => {
     const rows = await tx.select().from(handoverSnapshots).where(eq(handoverSnapshots.branchId, branchId)).orderBy(desc(handoverSnapshots.asOf)).limit(30);
     const ids = [...new Set(rows.flatMap((r) => [r.outgoingMembershipId, r.incomingMembershipId]))];
-    const names = ids.length ? await tx.select({ id: memberships.id, name: memberships.displayName }).from(memberships).where(inArray(memberships.id, ids)) : [];
-    return rows.map((r) => ({ ...r, outgoingName: names.find((n) => n.id === r.outgoingMembershipId)?.name, incomingName: names.find((n) => n.id === r.incomingMembershipId)?.name }));
+    const names = ids.length
+      ? await tx.select({ id: memberships.id, name: memberships.displayName }).from(memberships).where(inArray(memberships.id, ids))
+      : [];
+    return rows.map((r) => ({
+      ...r,
+      outgoingName: names.find((n) => n.id === r.outgoingMembershipId)?.name,
+      incomingName: names.find((n) => n.id === r.incomingMembershipId)?.name,
+    }));
   });
 }
 

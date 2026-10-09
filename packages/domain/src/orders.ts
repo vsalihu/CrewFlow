@@ -94,7 +94,10 @@ export function computeUrgency(now: Date, earliestArrival: Date | null, policy: 
 
 async function assertSourcesExist(tx: Tx, ids: readonly string[], branchId: string): Promise<void> {
   if (!ids.length) return;
-  const rows = await tx.select({ id: sourceMessages.id, branchId: sourceMessages.branchId }).from(sourceMessages).where(inArray(sourceMessages.id, [...ids]));
+  const rows = await tx
+    .select({ id: sourceMessages.id, branchId: sourceMessages.branchId })
+    .from(sourceMessages)
+    .where(inArray(sourceMessages.id, [...ids]));
   if (rows.length !== new Set(ids).size) throw new DomainError('VALIDATION_FAILED', 'A linked source message was not found.');
   if (rows.some((r) => r.branchId !== branchId)) throw new DomainError('VALIDATION_FAILED', 'Source messages must belong to the same branch as the order.');
 }
@@ -112,7 +115,13 @@ async function snapshotOrder(tx: Tx, orderId: string): Promise<Record<string, un
   const [o] = await tx.select().from(orders).where(eq(orders.id, orderId));
   const ls = await tx.select().from(orderLines).where(eq(orderLines.orderId, orderId)).orderBy(asc(orderLines.lineNo));
   return {
-    order: { reference: o!.reference, clientId: o!.clientId, clientContactId: o!.clientContactId, requestState: o!.requestState, ownerMembershipId: o!.ownerMembershipId },
+    order: {
+      reference: o!.reference,
+      clientId: o!.clientId,
+      clientContactId: o!.clientContactId,
+      requestState: o!.requestState,
+      ownerMembershipId: o!.ownerMembershipId,
+    },
     lines: ls.map((l) => ({
       id: l.id,
       lineNo: l.lineNo,
@@ -179,14 +188,22 @@ async function insertLine(tx: Tx, ctx: ServiceContext, order: { id: string; bran
 
 // ------------------------------------------------------------------ create
 
-export async function createOrder(ctx: ServiceContext, raw: CreateOrderInput, idempotencyKey?: string): Promise<{ id: string; reference: string; urgency: UrgencyLevel }> {
+export async function createOrder(
+  ctx: ServiceContext,
+  raw: CreateOrderInput,
+  idempotencyKey?: string,
+): Promise<{ id: string; reference: string; urgency: UrgencyLevel }> {
   const input = createOrderSchema.parse(raw);
   requireCapability(ctx.actor, 'order.create', input.branchId);
   return command(ctx, { operation: 'order.create', idempotencyKey, input }, async (tx) => {
     const [client] = await tx.select().from(clients).where(eq(clients.id, input.clientId));
     if (!client) throw notFound('Client');
     await assertSourcesExist(tx, input.sourceMessageIds, input.branchId);
-    await assertSitesBelongToClient(tx, input.clientId, input.lines.map((l) => l.siteId ?? null));
+    await assertSitesBelongToClient(
+      tx,
+      input.clientId,
+      input.lines.map((l) => l.siteId ?? null),
+    );
     const sources = await tx.select({ receivedAt: sourceMessages.receivedAt }).from(sourceMessages).where(inArray(sourceMessages.id, input.sourceMessageIds));
     const receivedAt = sources.map((s) => s.receivedAt).sort((a, b) => a.getTime() - b.getTime())[0] ?? nowOf(ctx);
 
@@ -319,7 +336,12 @@ function planLineChange(line: LineRow, change: LineChange): PlannedLineChange {
 
 async function computeImpact(tx: Tx, order: OrderRow, input: Amendment): Promise<Omit<AmendmentImpact, 'token'> & { plans: PlannedLineChange[] }> {
   const lineIds = input.lineChanges.map((c) => c.lineId);
-  const lines = lineIds.length ? await tx.select().from(orderLines).where(and(eq(orderLines.orderId, order.id), inArray(orderLines.id, lineIds))) : [];
+  const lines = lineIds.length
+    ? await tx
+        .select()
+        .from(orderLines)
+        .where(and(eq(orderLines.orderId, order.id), inArray(orderLines.id, lineIds)))
+    : [];
   if (lines.length !== new Set(lineIds).size) throw new DomainError('VALIDATION_FAILED', 'A changed line does not belong to this order.');
   const plans: PlannedLineChange[] = [];
   for (const c of input.lineChanges) {
@@ -354,7 +376,10 @@ async function computeImpact(tx: Tx, order: OrderRow, input: Amendment): Promise
   }
 
   const drafts = materialLineIds.length
-    ? await tx.select({ state: messageDrafts.state }).from(messageDrafts).where(and(eq(messageDrafts.entityType, 'order_line'), inArray(messageDrafts.entityId, materialLineIds)))
+    ? await tx
+        .select({ state: messageDrafts.state })
+        .from(messageDrafts)
+        .where(and(eq(messageDrafts.entityType, 'order_line'), inArray(messageDrafts.entityId, materialLineIds)))
     : [];
   const affectedAssignmentIds = [...reconfirmations.map((r) => r.assignmentId), ...staleOffers.map((s) => s.assignmentId)];
   const tripRows = affectedAssignmentIds.length
@@ -369,7 +394,15 @@ async function computeImpact(tx: Tx, order: OrderRow, input: Amendment): Promise
     ? await tx
         .select({ id: externalBookings.id })
         .from(externalBookings)
-        .where(and(inArray(externalBookings.assignmentId, reconfirmations.map((r) => r.assignmentId)), inArray(externalBookings.state, ['entered_unverified', 'verified'])))
+        .where(
+          and(
+            inArray(
+              externalBookings.assignmentId,
+              reconfirmations.map((r) => r.assignmentId),
+            ),
+            inArray(externalBookings.state, ['entered_unverified', 'verified']),
+          ),
+        )
     : [];
 
   return {
@@ -383,7 +416,9 @@ async function computeImpact(tx: Tx, order: OrderRow, input: Amendment): Promise
     staleOffers,
     excessAssignments,
     pendingMessagesToSupersede: drafts.filter((d) => ['draft', 'copied', 'queued'].includes(d.state)).length,
-    sentMessagesNeedingAmendment: drafts.filter((d) => ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged'].includes(d.state)).length,
+    sentMessagesNeedingAmendment: drafts.filter((d) =>
+      ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged'].includes(d.state),
+    ).length,
     tripsAffected: tripRows,
     externalBookingsToUpdate: ext.length,
   };
@@ -406,7 +441,10 @@ export async function previewAmendment(ctx: ServiceContext, orderId: string, raw
 // ------------------------------------------------------------------ amendment commit
 
 async function updateReservationsForLine(tx: Tx, ctx: ServiceContext, line: LineRow, policy: OperatingPolicy): Promise<string[]> {
-  const interval = reservationInterval({ arrivalAt: line.arrivalAt, startAt: line.startAt, endAt: line.endAt, endUnknown: line.endUnknown }, policy.provisionalShiftHours);
+  const interval = reservationInterval(
+    { arrivalAt: line.arrivalAt, startAt: line.startAt, endAt: line.endAt, endUnknown: line.endUnknown },
+    policy.provisionalShiftHours,
+  );
   const active = await tx
     .select({ id: assignments.id, workerId: assignments.workerId })
     .from(assignments)
@@ -414,7 +452,10 @@ async function updateReservationsForLine(tx: Tx, ctx: ServiceContext, line: Line
   const clashes: string[] = [];
   for (const a of active) {
     if (!interval) {
-      await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
+      await tx
+        .update(resourceReservations)
+        .set({ active: false })
+        .where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
       continue;
     }
     try {
@@ -428,14 +469,22 @@ async function updateReservationsForLine(tx: Tx, ctx: ServiceContext, line: Line
       if (pgErrorCode(e) !== '23P01') throw e;
       // The new time clashes with another booking for this worker. Release this reservation and
       // make the clash visible rather than failing the client's amendment.
-      await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
+      await tx
+        .update(resourceReservations)
+        .set({ active: false })
+        .where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
       clashes.push(a.id);
     }
   }
   return clashes;
 }
 
-export async function amendOrder(ctx: ServiceContext, orderId: string, raw: AmendmentInput, idempotencyKey?: string): Promise<{ revision: number; version: number; impact: Omit<AmendmentImpact, 'token'> }> {
+export async function amendOrder(
+  ctx: ServiceContext,
+  orderId: string,
+  raw: AmendmentInput,
+  idempotencyKey?: string,
+): Promise<{ revision: number; version: number; impact: Omit<AmendmentImpact, 'token'> }> {
   const input = amendmentSchema.parse(raw);
   return command(ctx, { operation: 'order.amend', idempotencyKey, input: { orderId, ...input } }, async (tx) => {
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for('update');
@@ -445,13 +494,11 @@ export async function amendOrder(ctx: ServiceContext, orderId: string, raw: Amen
     if (order.requestState === 'cancelled' || order.requestState === 'closed') throw new DomainError('INVALID_STATE', 'This order is closed.');
     verifyImpactToken(input.acknowledgeImpactToken, order.id, order.version, inputHash(order.id, input), nowOf(ctx));
     await assertSourcesExist(tx, input.sourceMessageIds, order.branchId);
-    await assertSitesBelongToClient(tx, order.clientId, [
-      ...input.lineChanges.map((c) => c.siteId ?? null),
-      ...input.addLines.map((l) => l.siteId ?? null),
-    ]);
+    await assertSitesBelongToClient(tx, order.clientId, [...input.lineChanges.map((c) => c.siteId ?? null), ...input.addLines.map((l) => l.siteId ?? null)]);
     // Lock affected lines in a consistent order before reading dependants.
     const lockIds = input.lineChanges.map((c) => c.lineId).sort();
-    if (lockIds.length) await tx.select({ id: orderLines.id }).from(orderLines).where(inArray(orderLines.id, lockIds)).orderBy(asc(orderLines.id)).for('update');
+    if (lockIds.length)
+      await tx.select({ id: orderLines.id }).from(orderLines).where(inArray(orderLines.id, lockIds)).orderBy(asc(orderLines.id)).for('update');
 
     const impact = await computeImpact(tx, order, input);
     if (!impact.changes.length && !input.addLines.length) throw new DomainError('VALIDATION_FAILED', 'Nothing changed.');
@@ -484,7 +531,10 @@ export async function amendOrder(ctx: ServiceContext, orderId: string, raw: Amen
       if (plan.material) {
         const clashes = await updateReservationsForLine(tx, ctx, line, policy);
         for (const r of impact.reconfirmations.filter((x) => x.lineId === line.id)) {
-          await tx.update(assignments).set({ state: 'reconfirmation_required', updatedAt: nowOf(ctx), version: sql`${assignments.version} + 1` }).where(eq(assignments.id, r.assignmentId));
+          await tx
+            .update(assignments)
+            .set({ state: 'reconfirmation_required', updatedAt: nowOf(ctx), version: sql`${assignments.version} + 1` })
+            .where(eq(assignments.id, r.assignmentId));
           await createTask(tx, ctx, {
             branchId: order.branchId,
             type: 'reconfirm_worker',
@@ -523,7 +573,9 @@ export async function amendOrder(ctx: ServiceContext, orderId: string, raw: Amen
         await tx
           .update(messageDrafts)
           .set({ state: 'superseded', endedAt: nowOf(ctx), endReason: `Order revision ${revisionNo}`, version: sql`${messageDrafts.version} + 1` })
-          .where(and(eq(messageDrafts.entityType, 'order_line'), eq(messageDrafts.entityId, line.id), inArray(messageDrafts.state, ['draft', 'copied', 'queued'])));
+          .where(
+            and(eq(messageDrafts.entityType, 'order_line'), eq(messageDrafts.entityId, line.id), inArray(messageDrafts.state, ['draft', 'copied', 'queued'])),
+          );
         const sent = await tx
           .select({ id: messageDrafts.id, assignmentId: messageDrafts.assignmentId })
           .from(messageDrafts)
@@ -585,13 +637,25 @@ export async function amendOrder(ctx: ServiceContext, orderId: string, raw: Amen
       });
     }
 
-    const [{ maxNo }] = (await tx.select({ maxNo: sql<number>`coalesce(max(${orderLines.lineNo}),0)` }).from(orderLines).where(eq(orderLines.orderId, order.id))) as [{ maxNo: number }];
+    const [{ maxNo }] = (await tx
+      .select({ maxNo: sql<number>`coalesce(max(${orderLines.lineNo}),0)` })
+      .from(orderLines)
+      .where(eq(orderLines.orderId, order.id))) as [{ maxNo: number }];
     for (const [i, l] of input.addLines.entries()) await insertLine(tx, ctx, order, Number(maxNo) + i + 1, lineFieldsFromInput(l));
 
     const newVersion = order.version + 1;
-    await tx.update(orders).set({ currentRevision: revisionNo, version: newVersion, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) }).where(eq(orders.id, order.id));
+    await tx
+      .update(orders)
+      .set({ currentRevision: revisionNo, version: newVersion, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) })
+      .where(eq(orders.id, order.id));
     await writeRevision(tx, ctx, order, revisionNo, input.reason, impact.changes, input.sourceMessageIds, 'amendment');
-    await audit(tx, ctx, { action: 'order.amended', entityType: 'order', entityId: order.id, after: { revisionNo, changes: impact.changes }, reason: input.reason });
+    await audit(tx, ctx, {
+      action: 'order.amended',
+      entityType: 'order',
+      entityId: order.id,
+      after: { revisionNo, changes: impact.changes },
+      reason: input.reason,
+    });
     await enqueue(tx, ctx, { eventType: 'order.amended', entityType: 'order', entityId: order.id, entityRevision: revisionNo });
     const { plans: _p, ...summary } = impact;
     return { revision: revisionNo, version: newVersion, impact: summary };
@@ -604,7 +668,12 @@ export async function amendOrder(ctx: ServiceContext, orderId: string, raw: Amen
  * Record the agency's decision per line: full, partial (fewer than requested) or decline (0).
  * The client's request is kept unchanged; acceptance is a separate event.
  */
-export async function decideAcceptance(ctx: ServiceContext, orderId: string, raw: AcceptanceInput, idempotencyKey?: string): Promise<{ requestState: string; version: number }> {
+export async function decideAcceptance(
+  ctx: ServiceContext,
+  orderId: string,
+  raw: AcceptanceInput,
+  idempotencyKey?: string,
+): Promise<{ requestState: string; version: number }> {
   const input = acceptanceSchema.parse(raw);
   return command(ctx, { operation: 'order.accept', idempotencyKey, input: { orderId, ...input } }, async (tx) => {
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for('update');
@@ -619,7 +688,10 @@ export async function decideAcceptance(ctx: ServiceContext, orderId: string, raw
       if (!line) throw new DomainError('VALIDATION_FAILED', 'A decision refers to a line not in this order.');
       if (line.lineState === 'cancelled') throw new DomainError('INVALID_STATE', `Line ${line.lineNo} is cancelled.`);
       if (d.acceptedCount > line.requestedCount) {
-        throw new DomainError('VALIDATION_FAILED', `Line ${line.lineNo}: cannot accept more than the client requested (${line.requestedCount}) without a client amendment.`);
+        throw new DomainError(
+          'VALIDATION_FAILED',
+          `Line ${line.lineNo}: cannot accept more than the client requested (${line.requestedCount}) without a client amendment.`,
+        );
       }
       const active = await tx
         .select({ id: assignments.id })
@@ -637,10 +709,17 @@ export async function decideAcceptance(ctx: ServiceContext, orderId: string, raw
           dedupeKey: `excess:${line.id}`,
         });
       }
-      if (line.acceptedCount !== d.acceptedCount) changes.push({ lineId: line.id, lineNo: line.lineNo, field: 'acceptedCount', from: line.acceptedCount, to: d.acceptedCount });
-      await tx.update(orderLines).set({ acceptedCount: d.acceptedCount, version: line.version + 1, updatedAt: nowOf(ctx) }).where(eq(orderLines.id, line.id));
+      if (line.acceptedCount !== d.acceptedCount)
+        changes.push({ lineId: line.id, lineNo: line.lineNo, field: 'acceptedCount', from: line.acceptedCount, to: d.acceptedCount });
+      await tx
+        .update(orderLines)
+        .set({ acceptedCount: d.acceptedCount, version: line.version + 1, updatedAt: nowOf(ctx) })
+        .where(eq(orderLines.id, line.id));
     }
-    const after = await tx.select({ requested: orderLines.requestedCount, accepted: orderLines.acceptedCount, state: orderLines.lineState }).from(orderLines).where(eq(orderLines.orderId, order.id));
+    const after = await tx
+      .select({ requested: orderLines.requestedCount, accepted: orderLines.acceptedCount, state: orderLines.lineState })
+      .from(orderLines)
+      .where(eq(orderLines.orderId, order.id));
     const open = after.filter((l) => l.state !== 'cancelled');
     const undecided = open.some((l) => l.accepted === null);
     const totalAccepted = open.reduce((s, l) => s + (l.accepted ?? 0), 0);
@@ -649,11 +728,24 @@ export async function decideAcceptance(ctx: ServiceContext, orderId: string, raw
     const revisionNo = order.currentRevision + 1;
     await tx
       .update(orders)
-      .set({ requestState, acceptanceNote: input.note ?? null, currentRevision: revisionNo, version: order.version + 1, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) })
+      .set({
+        requestState,
+        acceptanceNote: input.note ?? null,
+        currentRevision: revisionNo,
+        version: order.version + 1,
+        updatedAt: nowOf(ctx),
+        updatedBy: actorId(ctx.actor),
+      })
       .where(eq(orders.id, order.id));
     await writeRevision(tx, ctx, order, revisionNo, `Agency decision: ${requestState}${input.note ? ` (${input.note})` : ''}`, changes, [], 'confirmation');
     await closeTasksByKey(tx, ctx, `late_order:${order.id}`, `Agency decision recorded: ${requestState}`);
-    await audit(tx, ctx, { action: 'order.acceptance_decided', entityType: 'order', entityId: order.id, after: { requestState, decisions: input.decisions }, reason: input.note ?? null });
+    await audit(tx, ctx, {
+      action: 'order.acceptance_decided',
+      entityType: 'order',
+      entityId: order.id,
+      after: { requestState, decisions: input.decisions },
+      reason: input.note ?? null,
+    });
     await enqueue(tx, ctx, { eventType: 'order.acceptance_decided', entityType: 'order', entityId: order.id, entityRevision: revisionNo });
     return { requestState, version: order.version + 1 };
   });
@@ -669,7 +761,10 @@ export async function raiseConflict(ctx: ServiceContext, orderId: string, raw: R
     if (!order) throw notFound('Order');
     requireCapability(ctx.actor, 'order.amend', order.branchId);
     if (input.lineId) {
-      const [line] = await tx.select({ id: orderLines.id }).from(orderLines).where(and(eq(orderLines.id, input.lineId), eq(orderLines.orderId, order.id)));
+      const [line] = await tx
+        .select({ id: orderLines.id })
+        .from(orderLines)
+        .where(and(eq(orderLines.id, input.lineId), eq(orderLines.orderId, order.id)));
       if (!line) throw new DomainError('VALIDATION_FAILED', 'Line not in this order.');
     }
     const [row] = await tx
@@ -714,7 +809,14 @@ export async function resolveConflict(ctx: ServiceContext, conflictId: string, r
     if (c.state !== 'open') throw new DomainError('INVALID_STATE', 'This conflict is already resolved.');
     await tx
       .update(orderConflicts)
-      .set({ state: 'resolved', resolvedValue: input.resolvedValue as never, resolvedBy: actorId(ctx.actor), resolvedAt: nowOf(ctx), resolutionNote: input.note, version: c.version + 1 })
+      .set({
+        state: 'resolved',
+        resolvedValue: input.resolvedValue as never,
+        resolvedBy: actorId(ctx.actor),
+        resolvedAt: nowOf(ctx),
+        resolutionNote: input.note,
+        version: c.version + 1,
+      })
       .where(eq(orderConflicts.id, c.id));
     await closeTasksByKey(tx, ctx, `conflict:${c.id}`, `Resolved as ${input.resolvedValue}: ${input.note}`);
     await audit(tx, ctx, { action: 'conflict.resolved', entityType: 'order_conflict', entityId: c.id, after: input });
@@ -728,7 +830,12 @@ export async function resolveConflict(ctx: ServiceContext, conflictId: string, r
  * withdrawn; anyone already informed gets a cancellation-acknowledgement task; journeys and
  * JoinedUp bookings get follow-up tasks. A vehicle already on the road needs a dispatcher decision.
  */
-export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: CancellationInput, idempotencyKey?: string): Promise<{ cancelledAssignments: number; acknowledgementTasks: number; version: number }> {
+export async function cancelOrder(
+  ctx: ServiceContext,
+  orderId: string,
+  raw: CancellationInput,
+  idempotencyKey?: string,
+): Promise<{ cancelledAssignments: number; acknowledgementTasks: number; version: number }> {
   const input = cancellationSchema.parse(raw);
   return command(ctx, { operation: 'order.cancel', idempotencyKey, input: { orderId, ...input } }, async (tx) => {
     const [order] = await tx.select().from(orders).where(eq(orders.id, orderId)).for('update');
@@ -744,7 +851,8 @@ export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: Can
     if (input.scope === 'order') lineIds = allLines.map((l) => l.id);
     if (input.scope === 'lines') {
       lineIds = input.lineIds ?? [];
-      if (!lineIds.length || lineIds.some((id) => !allLines.find((l) => l.id === id))) throw new DomainError('VALIDATION_FAILED', 'Select lines from this order.');
+      if (!lineIds.length || lineIds.some((id) => !allLines.find((l) => l.id === id)))
+        throw new DomainError('VALIDATION_FAILED', 'Select lines from this order.');
     }
     if (input.scope === 'assignments') {
       assignmentIds = input.assignmentIds ?? [];
@@ -758,7 +866,9 @@ export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: Can
         and(
           eq(assignments.orderId, order.id),
           inArray(assignments.state, ['proposed', 'offered', 'accepted', 'reconfirmation_required']),
-          input.scope === 'assignments' ? inArray(assignments.id, assignmentIds) : inArray(assignments.lineId, lineIds.length ? lineIds : ['00000000-0000-0000-0000-000000000000']),
+          input.scope === 'assignments'
+            ? inArray(assignments.id, assignmentIds)
+            : inArray(assignments.lineId, lineIds.length ? lineIds : ['00000000-0000-0000-0000-000000000000']),
         ),
       );
     if (input.scope === 'assignments' && affected.length !== assignmentIds.length) {
@@ -767,8 +877,14 @@ export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: Can
 
     let ackTasks = 0;
     for (const a of affected) {
-      await tx.update(assignments).set({ state: 'cancelled', endReason: input.reason, updatedAt: nowOf(ctx), version: sql`${assignments.version} + 1` }).where(eq(assignments.id, a.id));
-      await tx.update(resourceReservations).set({ active: false }).where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
+      await tx
+        .update(assignments)
+        .set({ state: 'cancelled', endReason: input.reason, updatedAt: nowOf(ctx), version: sql`${assignments.version} + 1` })
+        .where(eq(assignments.id, a.id));
+      await tx
+        .update(resourceReservations)
+        .set({ active: false })
+        .where(and(eq(resourceReservations.assignmentId, a.id), eq(resourceReservations.active, true)));
       await closeTasksByKey(tx, ctx, `reconfirm:${a.id}`, 'Assignment cancelled', 'cancelled');
       await closeTasksByKey(tx, ctx, `reoffer:${a.id}`, 'Assignment cancelled', 'cancelled');
     }
@@ -783,7 +899,12 @@ export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: Can
       const informed = await tx
         .selectDistinct({ assignmentId: messageDrafts.assignmentId })
         .from(messageDrafts)
-        .where(and(inArray(messageDrafts.assignmentId, affectedIds), inArray(messageDrafts.state, ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged'])));
+        .where(
+          and(
+            inArray(messageDrafts.assignmentId, affectedIds),
+            inArray(messageDrafts.state, ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged']),
+          ),
+        );
       for (const i of informed) {
         const a = affected.find((x) => x.id === i.assignmentId)!;
         await createTask(tx, ctx, {
@@ -803,7 +924,10 @@ export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: Can
         .set({ mode: 'not_required', arrangementNote: `Assignment cancelled: ${input.reason}`, updatedAt: nowOf(ctx) })
         .where(inArray(transportRequirements.assignmentId, affectedIds));
       // JoinedUp: nothing entered → nothing to do; entered/verified → someone must cancel it there.
-      await tx.update(externalBookings).set({ state: 'not_required', updatedAt: nowOf(ctx) }).where(and(inArray(externalBookings.assignmentId, affectedIds), eq(externalBookings.state, 'pending_entry')));
+      await tx
+        .update(externalBookings)
+        .set({ state: 'not_required', updatedAt: nowOf(ctx) })
+        .where(and(inArray(externalBookings.assignmentId, affectedIds), eq(externalBookings.state, 'pending_entry')));
       const entered = await tx
         .select({ id: externalBookings.id })
         .from(externalBookings)
@@ -842,12 +966,21 @@ export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: Can
       }
     }
     if (input.scope !== 'assignments') {
-      await tx.update(orderLines).set({ lineState: 'cancelled', updatedAt: nowOf(ctx), version: sql`${orderLines.version} + 1` }).where(inArray(orderLines.id, lineIds));
+      await tx
+        .update(orderLines)
+        .set({ lineState: 'cancelled', updatedAt: nowOf(ctx), version: sql`${orderLines.version} + 1` })
+        .where(inArray(orderLines.id, lineIds));
     }
-    const remaining = await tx.select({ id: orderLines.id }).from(orderLines).where(and(eq(orderLines.orderId, order.id), eq(orderLines.lineState, 'open')));
+    const remaining = await tx
+      .select({ id: orderLines.id })
+      .from(orderLines)
+      .where(and(eq(orderLines.orderId, order.id), eq(orderLines.lineState, 'open')));
     const requestState = remaining.length === 0 ? 'cancelled' : order.requestState;
     const revisionNo = order.currentRevision + 1;
-    await tx.update(orders).set({ requestState, currentRevision: revisionNo, version: order.version + 1, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) }).where(eq(orders.id, order.id));
+    await tx
+      .update(orders)
+      .set({ requestState, currentRevision: revisionNo, version: order.version + 1, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) })
+      .where(eq(orders.id, order.id));
     await writeRevision(
       tx,
       ctx,
@@ -858,7 +991,13 @@ export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: Can
       input.sourceMessageIds,
       'cancellation',
     );
-    await audit(tx, ctx, { action: 'order.cancelled', entityType: 'order', entityId: order.id, after: { scope: input.scope, lineIds, assignmentIds: affectedIds }, reason: input.reason });
+    await audit(tx, ctx, {
+      action: 'order.cancelled',
+      entityType: 'order',
+      entityId: order.id,
+      after: { scope: input.scope, lineIds, assignmentIds: affectedIds },
+      reason: input.reason,
+    });
     await enqueue(tx, ctx, { eventType: 'order.cancelled', entityType: 'order', entityId: order.id, entityRevision: revisionNo });
     return { cancelledAssignments: affected.length, acknowledgementTasks: ackTasks, version: order.version + 1 };
   });
@@ -870,7 +1009,10 @@ export async function recordReplacementDeclined(ctx: ServiceContext, lineId: str
     const [line] = await tx.select().from(orderLines).where(eq(orderLines.id, lineId)).for('update');
     if (!line) throw notFound('Line');
     requireCapability(ctx.actor, 'order.amend', line.branchId);
-    await tx.update(orderLines).set({ replacementDeclinedAt: nowOf(ctx), version: line.version + 1 }).where(eq(orderLines.id, line.id));
+    await tx
+      .update(orderLines)
+      .set({ replacementDeclinedAt: nowOf(ctx), version: line.version + 1 })
+      .where(eq(orderLines.id, line.id));
     await tx
       .update(tasks)
       .set({ state: 'cancelled', outcome: `Client declined replacement: ${note}`, completedAt: nowOf(ctx), completedBy: actorId(ctx.actor) })

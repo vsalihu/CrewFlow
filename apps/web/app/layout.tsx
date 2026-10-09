@@ -29,7 +29,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en-GB">
       <body className="min-h-dvh">
-        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2">
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-surface focus:px-3 focus:py-2"
+        >
           Skip to content
         </a>
         <header className="sticky top-0 z-40 border-b border-hairline bg-surface">
@@ -47,7 +50,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </nav>
             ) : null}
             <div className="ml-auto flex shrink-0 items-center gap-3 text-xs text-ink-subtle">
-              {appEnv !== 'production' ? <span className="rounded bg-warn-bg px-1.5 py-0.5 font-medium text-warn">{appEnv}<span className="hidden sm:inline">: synthetic data only</span></span> : null}
+              {appEnv !== 'production' ? (
+                <span className="rounded bg-warn-bg px-1.5 py-0.5 font-medium text-warn">
+                  {appEnv}
+                  <span className="hidden sm:inline">: synthetic data only</span>
+                </span>
+              ) : null}
               {actor ? (
                 <form action={signOut} className="flex items-center gap-2">
                   <span className="hidden text-ink-muted sm:inline">{actor.displayName}</span>

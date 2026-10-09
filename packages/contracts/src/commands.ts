@@ -102,9 +102,7 @@ export const resolveConflictSchema = z.strictObject({
 export type ResolveConflictInput = z.input<typeof resolveConflictSchema>;
 
 export const proposeAssignmentsSchema = z.strictObject({
-  workers: z
-    .array(z.strictObject({ workerId: uuid, rawTransportLabel: z.string().max(100).nullish() }))
-    .min(1),
+  workers: z.array(z.strictObject({ workerId: uuid, rawTransportLabel: z.string().max(100).nullish() })).min(1),
 });
 export type ProposeAssignmentsInput = z.input<typeof proposeAssignmentsSchema>;
 
@@ -124,7 +122,12 @@ const stopSchema = z.strictObject({
   workLocationId: uuid.nullish(),
   pickupPointId: uuid.nullish(),
   plannedAt: z.iso.datetime({ offset: true }).nullish(),
-  travelMinutesFromPrevious: z.number().int().min(0).max(24 * 60).nullish(),
+  travelMinutesFromPrevious: z
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 60)
+    .nullish(),
 });
 
 const passengerSchema = z.strictObject({

@@ -16,7 +16,8 @@ export default async function IntegrationsPage() {
     <div className="flex max-w-4xl flex-col gap-4">
       <h1 className="text-lg font-semibold">Integrations</h1>
       <p className="text-sm text-ink-muted">
-        Nothing here is simulated. A copied message is not a sent message, and an exported booking is not a confirmed JoinedUp booking. Every workflow works with these integrations off.
+        Nothing here is simulated. A copied message is not a sent message, and an exported booking is not a confirmed JoinedUp booking. Every workflow works
+        with these integrations off.
       </p>
       {INTEGRATIONS.map((i) => {
         const s = settings.find((x) => x.provider === i.provider);

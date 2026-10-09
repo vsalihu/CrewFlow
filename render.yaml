@@ -1,0 +1,47 @@
+# Render blueprint (build plan §15.2). Paid, always-on services in Frankfurt alongside a
+# Supabase project created in Frankfurt. Confirm region availability and the organisation's
+# data-residency decision before provisioning production (docs/deployment.md).
+# Migrations are NOT run here: use the "Migrate database" GitHub workflow, which holds the
+# owner credentials. These services only receive the runtime-role DATABASE_URL.
+services:
+  - type: web
+    name: cds-operations-web
+    runtime: docker
+    dockerfilePath: ./docker/web.Dockerfile
+    dockerContext: .
+    dockerCommand: node apps/web/server.js
+    region: frankfurt
+    plan: standard
+    healthCheckPath: /api/health/ready
+    autoDeploy: false
+    envVars:
+      - fromGroup: cds-operations-runtime
+      - key: APP_ENV
+        sync: false
+
+  - type: worker
+    name: cds-operations-worker
+    runtime: docker
+    dockerfilePath: ./docker/worker.Dockerfile
+    dockerContext: .
+    region: frankfurt
+    plan: starter
+    autoDeploy: false
+    envVars:
+      - fromGroup: cds-operations-runtime
+      - key: APP_ENV
+        sync: false
+
+envVarGroups:
+  - name: cds-operations-runtime
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: APP_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: ERROR_MONITORING_DSN
+        sync: false

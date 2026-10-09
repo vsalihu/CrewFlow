@@ -8,13 +8,19 @@ import { audit, command, notFound, nowOf, type ServiceContext } from './context'
  * Hand over open work: a time-stamped snapshot plus reassignment of the outgoing person's open
  * tasks to the incoming owner, who must acknowledge receipt. Unacknowledged handovers stay visible.
  */
-export async function createHandover(ctx: ServiceContext, input: { branchId: string; incomingMembershipId: string; note?: string | null }): Promise<{ id: string; taskCount: number }> {
+export async function createHandover(
+  ctx: ServiceContext,
+  input: { branchId: string; incomingMembershipId: string; note?: string | null },
+): Promise<{ id: string; taskCount: number }> {
   requireCapability(ctx.actor, 'handover.manage', input.branchId);
   const outgoing = actorId(ctx.actor);
   if (!outgoing) throw new DomainError('PERMISSION_DENIED', 'Only a staff member can hand over.');
   if (outgoing === input.incomingMembershipId) throw new DomainError('VALIDATION_FAILED', 'Choose someone else to hand over to.');
   return command(ctx, { operation: 'handover.create' }, async (tx) => {
-    const [incoming] = await tx.select({ id: memberships.id, name: memberships.displayName }).from(memberships).where(eq(memberships.id, input.incomingMembershipId));
+    const [incoming] = await tx
+      .select({ id: memberships.id, name: memberships.displayName })
+      .from(memberships)
+      .where(eq(memberships.id, input.incomingMembershipId));
     if (!incoming) throw notFound('Staff member');
     const open = await tx
       .select()
@@ -28,7 +34,10 @@ export async function createHandover(ctx: ServiceContext, input: { branchId: str
       );
     const ids = open.map((t) => t.id);
     if (ids.length) {
-      await tx.update(tasks).set({ ownerMembershipId: incoming.id, coverageAlert: false, updatedAt: nowOf(ctx) }).where(inArray(tasks.id, ids));
+      await tx
+        .update(tasks)
+        .set({ ownerMembershipId: incoming.id, coverageAlert: false, updatedAt: nowOf(ctx) })
+        .where(inArray(tasks.id, ids));
     }
     const [row] = await tx
       .insert(handoverSnapshots)
@@ -54,7 +63,10 @@ export async function acknowledgeHandover(ctx: ServiceContext, handoverId: strin
     if (!h) throw notFound('Handover');
     if (h.incomingMembershipId !== actorId(ctx.actor)) throw new DomainError('PERMISSION_DENIED', 'Only the incoming person can acknowledge this handover.');
     if (h.acknowledgedAt) return;
-    await tx.update(handoverSnapshots).set({ acknowledgedAt: nowOf(ctx) }).where(eq(handoverSnapshots.id, h.id));
+    await tx
+      .update(handoverSnapshots)
+      .set({ acknowledgedAt: nowOf(ctx) })
+      .where(eq(handoverSnapshots.id, h.id));
     await audit(tx, ctx, { action: 'handover.acknowledged', entityType: 'handover', entityId: h.id });
   });
 }

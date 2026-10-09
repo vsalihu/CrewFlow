@@ -92,10 +92,7 @@ export async function completeTask(
   });
 }
 
-export async function assignTask(
-  ctx: ServiceContext,
-  input: { taskId: string; ownerMembershipId: string; expectedVersion?: number },
-): Promise<void> {
+export async function assignTask(ctx: ServiceContext, input: { taskId: string; ownerMembershipId: string; expectedVersion?: number }): Promise<void> {
   await command(ctx, { operation: 'task.assign' }, async (tx) => {
     const [task] = await tx.select().from(tasks).where(eq(tasks.id, input.taskId)).for('update');
     if (!task) throw notFound('Task');
@@ -107,7 +104,13 @@ export async function assignTask(
       .update(tasks)
       .set({ ownerMembershipId: input.ownerMembershipId, coverageAlert: false, updatedAt: nowOf(ctx), version: task.version + 1 })
       .where(eq(tasks.id, task.id));
-    await audit(tx, ctx, { action: 'task.assigned', entityType: 'task', entityId: task.id, before: { owner: task.ownerMembershipId }, after: { owner: input.ownerMembershipId } });
+    await audit(tx, ctx, {
+      action: 'task.assigned',
+      entityType: 'task',
+      entityId: task.id,
+      before: { owner: task.ownerMembershipId },
+      after: { owner: input.ownerMembershipId },
+    });
   });
 }
 

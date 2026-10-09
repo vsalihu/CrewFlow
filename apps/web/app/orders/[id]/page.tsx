@@ -4,7 +4,7 @@ import { StateBadge } from '@/components/Status';
 import { TaskList } from '@/components/TaskList';
 import { Badge, Button, Empty, Field, Flash, LinkButton, Panel, inputClass, td, th } from '@/components/ui';
 import { fmtDate, fmtDateTime, fmtTime, label } from '@/lib/format';
-import { requireContext } from '@/lib/session';
+import { orNotFound, requireContext } from '@/lib/session';
 import {
   acceptOrder,
   cancelOrderAction,
@@ -20,11 +20,17 @@ export const dynamic = 'force-dynamic';
 
 const ACTIVE = ['proposed', 'offered', 'accepted', 'reconfirmation_required', 'arrived'];
 
-export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
+export default async function OrderPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
+}) {
   const ctx = await requireContext();
   const { id } = await params;
   const sp = await searchParams;
-  const d = await getOrderDetail(ctx, id);
+  const d = await orNotFound(getOrderDetail(ctx, id));
   const o = d.order;
   const back = `/orders/${o.id}`;
   const closed = ['cancelled', 'closed', 'declined'].includes(o.requestState);
@@ -70,7 +76,10 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                     <Def k="Date" v={fmtDate(l.serviceDate)} />
                     <Def k="Site" v={siteName ?? 'Not confirmed'} />
                     <Def k="Entrance" v={locationName ? `${locationName}${locationVerified ? '' : ' (unverified)'}` : 'Not confirmed'} />
-                    <Def k="Arrive / start / end" v={`${fmtTime(l.arrivalAt)} / ${fmtTime(l.startAt)} / ${l.endUnknown ? 'unknown' : fmtTime(l.endAt)}${l.endDayOffset ? ' (+1 day)' : ''}`} />
+                    <Def
+                      k="Arrive / start / end"
+                      v={`${fmtTime(l.arrivalAt)} / ${fmtTime(l.startAt)} / ${l.endUnknown ? 'unknown' : fmtTime(l.endAt)}${l.endDayOffset ? ' (+1 day)' : ''}`}
+                    />
                     <Def k="Requested" v={`${l.requestedCount}${l.minimumCount !== null ? ` (min ${l.minimumCount})` : ''}`} />
                     <Def k="Agency accepted" v={l.acceptedCount === null ? 'Not decided' : String(l.acceptedCount)} />
                     <Def k="Confirmed by workers" v={`${status.confirmed}${status.proposed ? `, ${status.proposed} awaiting reply` : ''}`} />
@@ -103,12 +112,20 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                             <tr key={a.id}>
                               <td className={td}>
                                 <div className="font-medium">{workerName}</div>
-                                {a.rawTransportLabel ? <div className="text-xs text-ink-subtle">Roster label: “{a.rawTransportLabel}” (not interpreted)</div> : null}
-                                {responses[0] ? <div className="text-xs text-ink-subtle">Last reply: {label(responses[0].response)} ({label(responses[0].outcome)})</div> : null}
+                                {a.rawTransportLabel ? (
+                                  <div className="text-xs text-ink-subtle">Roster label: “{a.rawTransportLabel}” (not interpreted)</div>
+                                ) : null}
+                                {responses[0] ? (
+                                  <div className="text-xs text-ink-subtle">
+                                    Last reply: {label(responses[0].response)} ({label(responses[0].outcome)})
+                                  </div>
+                                ) : null}
                               </td>
                               <td className={td}>
                                 <StateBadge state={a.state} />
-                                {a.state === 'accepted' && a.acceptedLineVersion !== l.lineVersion ? <div className="text-xs text-bad">accepted v{a.acceptedLineVersion}</div> : null}
+                                {a.state === 'accepted' && a.acceptedLineVersion !== l.lineVersion ? (
+                                  <div className="text-xs text-bad">accepted v{a.acceptedLineVersion}</div>
+                                ) : null}
                               </td>
                               <td className={`${td} text-xs`}>
                                 {(['outbound', 'return'] as const).map((leg) => {
@@ -120,7 +137,15 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                                   );
                                 })}
                               </td>
-                              <td className={td}>{external ? <StateBadge state={external.lineVersion !== l.lineVersion && external.state === 'verified' ? 'discrepancy' : external.state} /> : <span className="text-xs text-ink-subtle">n/a</span>}</td>
+                              <td className={td}>
+                                {external ? (
+                                  <StateBadge
+                                    state={external.lineVersion !== l.lineVersion && external.state === 'verified' ? 'discrepancy' : external.state}
+                                  />
+                                ) : (
+                                  <span className="text-xs text-ink-subtle">n/a</span>
+                                )}
+                              </td>
                               <td className={td}>
                                 <form action={recordResponseAction} className="flex flex-wrap items-center gap-1">
                                   <input type="hidden" name="orderId" value={o.id} />
@@ -154,7 +179,14 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                                   <label className="sr-only" htmlFor={`tpl-${a.id}`}>
                                     Template
                                   </label>
-                                  <select id={`tpl-${a.id}`} name="template" defaultValue={a.state === 'accepted' ? 'worker_booking' : a.state === 'reconfirmation_required' ? 'amendment' : 'worker_offer'} className="h-7 rounded border border-hairline-strong bg-surface px-1 text-xs">
+                                  <select
+                                    id={`tpl-${a.id}`}
+                                    name="template"
+                                    defaultValue={
+                                      a.state === 'accepted' ? 'worker_booking' : a.state === 'reconfirmation_required' ? 'amendment' : 'worker_offer'
+                                    }
+                                    className="h-7 rounded border border-hairline-strong bg-surface px-1 text-xs"
+                                  >
                                     <option value="worker_offer">Offer</option>
                                     <option value="worker_booking">Booking</option>
                                     <option value="amendment">Amendment</option>
@@ -169,7 +201,13 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                                     <label className="sr-only" htmlFor={`rel-${a.id}`}>
                                       Reason
                                     </label>
-                                    <input id={`rel-${a.id}`} name="reason" required placeholder="Reason…" className="h-7 min-w-0 rounded border border-hairline-strong bg-surface px-1 text-xs" />
+                                    <input
+                                      id={`rel-${a.id}`}
+                                      name="reason"
+                                      required
+                                      placeholder="Reason…"
+                                      className="h-7 min-w-0 rounded border border-hairline-strong bg-surface px-1 text-xs"
+                                    />
                                     <button className="h-7 rounded border border-hairline-strong px-2 text-xs text-bad hover:bg-bad-bg">Release</button>
                                   </form>
                                 </details>
@@ -228,7 +266,9 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
               <form action={acceptOrder} className="flex flex-col gap-3">
                 <input type="hidden" name="orderId" value={o.id} />
                 <input type="hidden" name="version" value={o.version} />
-                <p className="text-sm text-ink-muted">How many can the agency actually supply for each line? Accepting fewer than requested records a shortfall; 0 declines the line.</p>
+                <p className="text-sm text-ink-muted">
+                  How many can the agency actually supply for each line? Accepting fewer than requested records a shortfall; 0 declines the line.
+                </p>
                 <div className="flex flex-wrap gap-4">
                   {d.lines
                     .filter((x) => x.l.lineState === 'open')
@@ -236,7 +276,17 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                       <div key={l.id} className="w-40">
                         <input type="hidden" name="lineId" value={l.id} />
                         <Field label={`Line ${l.lineNo} (requested ${l.requestedCount})`} htmlFor={`acc-${l.id}`}>
-                          <input id={`acc-${l.id}`} name={`accepted_${l.id}`} type="number" inputMode="numeric" min={0} max={l.requestedCount} required defaultValue={l.acceptedCount ?? undefined} className={inputClass} />
+                          <input
+                            id={`acc-${l.id}`}
+                            name={`accepted_${l.id}`}
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={l.requestedCount}
+                            required
+                            defaultValue={l.acceptedCount ?? undefined}
+                            className={inputClass}
+                          />
                         </Field>
                       </div>
                     ))}
@@ -402,11 +452,13 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
                     r{r.revisionNo}: {r.reason}
                   </div>
                   <div className="text-xs text-ink-subtle">{fmtDateTime(r.effectiveAt)}</div>
-                  {(r.changes as { field?: string; from?: unknown; to?: unknown; lineNo?: number }[]).filter((c) => c.field).map((c, i) => (
-                    <div key={i} className="text-xs text-ink-muted">
-                      Line {c.lineNo} {c.field}: {String(c.from ?? 'none')} → {String(c.to ?? 'none')}
-                    </div>
-                  ))}
+                  {(r.changes as { field?: string; from?: unknown; to?: unknown; lineNo?: number }[])
+                    .filter((c) => c.field)
+                    .map((c, i) => (
+                      <div key={i} className="text-xs text-ink-muted">
+                        Line {c.lineNo} {c.field}: {String(c.from ?? 'none')} → {String(c.to ?? 'none')}
+                      </div>
+                    ))}
                 </li>
               ))}
             </ol>

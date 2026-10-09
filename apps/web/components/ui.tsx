@@ -36,7 +36,10 @@ export function Button({ variant = 'secondary', className = '', ...props }: Butt
 
 export function LinkButton({ href, children, variant = 'secondary' }: { href: string; children: ReactNode; variant?: 'primary' | 'secondary' }) {
   return (
-    <Link href={href} className={`inline-flex h-8 items-center whitespace-nowrap rounded-[var(--radius-ui)] border px-3 text-sm font-medium transition-colors ${buttonClass[variant]}`}>
+    <Link
+      href={href}
+      className={`inline-flex h-8 items-center whitespace-nowrap rounded-[var(--radius-ui)] border px-3 text-sm font-medium transition-colors ${buttonClass[variant]}`}
+    >
       {children}
     </Link>
   );
@@ -76,7 +79,11 @@ export function Panel({ title, actions, children, id }: { title?: string; action
 export function Flash({ error, notice }: { error?: string; notice?: string }) {
   if (!error && !notice) return null;
   return (
-    <div role={error ? 'alert' : 'status'} aria-live="polite" className={`rounded-[var(--radius-ui)] px-3 py-2 text-sm ${error ? 'bg-bad-bg text-bad' : 'bg-ok-bg text-ok'}`}>
+    <div
+      role={error ? 'alert' : 'status'}
+      aria-live="polite"
+      className={`rounded-[var(--radius-ui)] px-3 py-2 text-sm ${error ? 'bg-bad-bg text-bad' : 'bg-ok-bg text-ok'}`}
+    >
       {error ?? notice}
     </div>
   );

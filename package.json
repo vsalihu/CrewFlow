@@ -7,7 +7,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "build": "pnpm -r --filter=./packages/* run build && pnpm --filter @cds/web build",
+    "build": "pnpm --filter @cds/web build",
     "typecheck": "pnpm -r run typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -16,7 +16,8 @@
     "db:migrate": "pnpm --filter @cds/db migrate",
     "db:seed": "pnpm --filter @cds/test-fixtures seed",
     "dev": "pnpm --filter @cds/web dev",
-    "worker": "pnpm --filter @cds/worker start"
+    "worker": "pnpm --filter @cds/worker start",
+    "test:e2e": "pnpm --filter @cds/web test:e2e"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

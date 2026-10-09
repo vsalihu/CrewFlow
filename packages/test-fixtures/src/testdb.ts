@@ -8,7 +8,8 @@ import { createDb, createPool, migrateDatabase, type Db } from '@cds/db';
 
 export const ADMIN_URL = process.env.TEST_DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/postgres';
 export const TEMPLATE_DB = 'cds_test_template';
-const APP_PASSWORD = 'cds_app_test_only';
+// Roles are cluster-wide, so tests and local development share one runtime-role password.
+const APP_PASSWORD = process.env.CDS_APP_PASSWORD ?? 'cds_app_local';
 
 function urlFor(db: string, user?: { name: string; password: string }): string {
   const u = new URL(ADMIN_URL);

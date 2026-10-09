@@ -24,7 +24,9 @@ export default async function HandoverPage({ searchParams }: { searchParams: Pro
         <Panel title="Hand over my open work">
           <form action={createHandoverAction} className="flex flex-col gap-3">
             <input type="hidden" name="branchId" value={branchId} />
-            <p className="text-sm text-ink-muted">Saves a time-stamped snapshot and moves your open tasks (and any unowned ones) to the incoming person, who must acknowledge.</p>
+            <p className="text-sm text-ink-muted">
+              Saves a time-stamped snapshot and moves your open tasks (and any unowned ones) to the incoming person, who must acknowledge.
+            </p>
             <Field label="Hand over to" htmlFor="incoming">
               <select id="incoming" name="incomingMembershipId" required className={inputClass}>
                 {colleagues.map((c) => (

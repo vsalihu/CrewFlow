@@ -64,14 +64,27 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
     .leftJoin(workLocations, eq(workLocations.id, orderLines.workLocationId))
     .where(inArray(orderLines.id, lineIds));
   const as = await tx
-    .select({ id: assignments.id, lineId: assignments.lineId, state: assignments.state, workerId: assignments.workerId, acceptedLineVersion: assignments.acceptedLineVersion, name: workers.displayName })
+    .select({
+      id: assignments.id,
+      lineId: assignments.lineId,
+      state: assignments.state,
+      workerId: assignments.workerId,
+      acceptedLineVersion: assignments.acceptedLineVersion,
+      name: workers.displayName,
+    })
     .from(assignments)
     .innerJoin(workers, eq(workers.id, assignments.workerId))
     .where(and(inArray(assignments.lineId, lineIds), inArray(assignments.state, ['proposed', 'offered', 'accepted', 'reconfirmation_required', 'arrived'])));
   const aIds = as.map((a) => a.id);
   const reqs = aIds.length
     ? await tx
-        .select({ assignmentId: transportRequirements.assignmentId, leg: transportRequirements.leg, mode: transportRequirements.mode, accountable: transportRequirements.accountableMembershipId, tripState: trips.state })
+        .select({
+          assignmentId: transportRequirements.assignmentId,
+          leg: transportRequirements.leg,
+          mode: transportRequirements.mode,
+          accountable: transportRequirements.accountableMembershipId,
+          tripState: trips.state,
+        })
         .from(transportRequirements)
         .leftJoin(trips, eq(trips.id, transportRequirements.tripId))
         .where(inArray(transportRequirements.assignmentId, aIds))
@@ -99,7 +112,8 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
     if (!l.startAt) blockers.push({ code: 'START_UNRESOLVED', message: 'Start time not confirmed.' });
     if (accepted === null) blockers.push({ code: 'NOT_ACCEPTED', message: 'Agency has not decided how many it accepts.' });
     const confirmationShortfall = Math.max(0, (accepted ?? 0) - confirmed);
-    if (accepted !== null && confirmationShortfall > 0) blockers.push({ code: 'UNCONFIRMED', message: `${confirmationShortfall} of ${accepted} not confirmed by workers.` });
+    if (accepted !== null && confirmationShortfall > 0)
+      blockers.push({ code: 'UNCONFIRMED', message: `${confirmationShortfall} of ${accepted} not confirmed by workers.` });
     if (reconfirm) blockers.push({ code: 'RECONFIRM', message: `${reconfirm} worker(s) must reconfirm the changed shift.` });
 
     let unresolvedLegs = 0;
@@ -122,13 +136,23 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
       }
     }
     if (unresolvedLegs) blockers.push({ code: 'TRANSPORT_UNRESOLVED', message: `${unresolvedLegs} transport leg(s) unresolved.` });
-    if (unconfirmedJourneys) blockers.push({ code: 'JOURNEY_UNCONFIRMED', message: `${unconfirmedJourneys} leg(s) on a journey the driver has not accepted in its current form.` });
-    const transport: TransportState = !confirmedA.length ? 'unplanned' : unresolvedLegs ? 'unplanned' : allReady ? (anyAgency ? 'ready' : 'not_required') : 'proposed';
+    if (unconfirmedJourneys)
+      blockers.push({ code: 'JOURNEY_UNCONFIRMED', message: `${unconfirmedJourneys} leg(s) on a journey the driver has not accepted in its current form.` });
+    const transport: TransportState = !confirmedA.length
+      ? 'unplanned'
+      : unresolvedLegs
+        ? 'unplanned'
+        : allReady
+          ? anyAgency
+            ? 'ready'
+            : 'not_required'
+          : 'proposed';
 
     const extMine = ext.filter((e) => confirmedA.some((a) => a.id === e.assignmentId));
     const externalVerified = extMine.filter((e) => e.state === 'verified' && e.lineVersion === l.lineVersion).length;
     const externalPending = requiresExternal ? confirmedA.length - externalVerified : 0;
-    if (requiresExternal && externalPending > 0) blockers.push({ code: 'EXTERNAL_UNVERIFIED', message: `${externalPending} JoinedUp booking(s) not verified for the current version.` });
+    if (requiresExternal && externalPending > 0)
+      blockers.push({ code: 'EXTERNAL_UNVERIFIED', message: `${externalPending} JoinedUp booking(s) not verified for the current version.` });
 
     if (confirmedA.length) {
       const rd = await evaluateReadiness(tx, { workerIds: confirmedA.map((a) => a.workerId), siteId: l.siteId, clientId, date: l.serviceDate });
@@ -217,9 +241,19 @@ export async function operationsBoard(ctx: ServiceContext, q: { branchId: string
       .innerJoin(clients, eq(clients.id, orders.clientId))
       .leftJoin(sites, eq(sites.id, orderLines.siteId))
       .leftJoin(memberships, eq(memberships.id, orders.ownerMembershipId))
-      .where(and(eq(orderLines.branchId, q.branchId), eq(orderLines.serviceDate, q.date), eq(orderLines.lineState, 'open'), sql`${orders.requestState} not in ('cancelled','declined','closed')`))
+      .where(
+        and(
+          eq(orderLines.branchId, q.branchId),
+          eq(orderLines.serviceDate, q.date),
+          eq(orderLines.lineState, 'open'),
+          sql`${orders.requestState} not in ('cancelled','declined','closed')`,
+        ),
+      )
       .orderBy(asc(orderLines.arrivalAt), asc(orders.reference), asc(orderLines.lineNo));
-    const statuses = await lineStatuses(tx, rows.map((r) => r.l.id));
+    const statuses = await lineStatuses(
+      tx,
+      rows.map((r) => r.l.id),
+    );
     const board: BoardRow[] = rows.map((r) => {
       const status = statuses.get(r.l.id)!;
       return {
@@ -243,14 +277,32 @@ export async function operationsBoard(ctx: ServiceContext, q: { branchId: string
       };
     });
     const openTasks = await tx
-      .select({ id: tasks.id, title: tasks.title, priority: tasks.priority, type: tasks.type, dueAt: tasks.dueAt, coverageAlert: tasks.coverageAlert, ownerName: memberships.displayName, entityType: tasks.entityType, entityId: tasks.entityId, version: tasks.version })
+      .select({
+        id: tasks.id,
+        title: tasks.title,
+        priority: tasks.priority,
+        type: tasks.type,
+        dueAt: tasks.dueAt,
+        coverageAlert: tasks.coverageAlert,
+        ownerName: memberships.displayName,
+        entityType: tasks.entityType,
+        entityId: tasks.entityId,
+        version: tasks.version,
+      })
       .from(tasks)
       .leftJoin(memberships, eq(memberships.id, tasks.ownerMembershipId))
       .where(and(or(eq(tasks.branchId, q.branchId), isNull(tasks.branchId)), inArray(tasks.state, ['open', 'in_progress'])))
       .orderBy(desc(sql`${tasks.priority} = 'urgent'`), asc(tasks.dueAt), asc(tasks.createdAt))
       .limit(200);
     const returnQueue = await tx
-      .select({ assignmentId: transportRequirements.assignmentId, workerName: workers.displayName, mode: transportRequirements.mode, note: transportRequirements.arrangementNote, accountable: memberships.displayName, reference: orders.reference })
+      .select({
+        assignmentId: transportRequirements.assignmentId,
+        workerName: workers.displayName,
+        mode: transportRequirements.mode,
+        note: transportRequirements.arrangementNote,
+        accountable: memberships.displayName,
+        reference: orders.reference,
+      })
       .from(transportRequirements)
       .innerJoin(assignments, eq(assignments.id, transportRequirements.assignmentId))
       .innerJoin(orderLines, eq(orderLines.id, assignments.lineId))
@@ -303,7 +355,10 @@ export async function getOrderDetail(ctx: ServiceContext, orderId: string) {
       .leftJoin(workLocations, eq(workLocations.id, orderLines.workLocationId))
       .where(eq(orderLines.orderId, orderId))
       .orderBy(asc(orderLines.lineNo));
-    const statuses = await lineStatuses(tx, lines.map((x) => x.l.id));
+    const statuses = await lineStatuses(
+      tx,
+      lines.map((x) => x.l.id),
+    );
     const as = await tx
       .select({ a: assignments, workerName: workers.displayName })
       .from(assignments)
@@ -319,11 +374,18 @@ export async function getOrderDetail(ctx: ServiceContext, orderId: string) {
           .where(inArray(transportRequirements.assignmentId, aIds))
       : [];
     const ext = aIds.length ? await tx.select().from(externalBookings).where(inArray(externalBookings.assignmentId, aIds)) : [];
-    const responses = aIds.length ? await tx.select().from(assignmentResponses).where(inArray(assignmentResponses.assignmentId, aIds)).orderBy(desc(assignmentResponses.createdAt)) : [];
+    const responses = aIds.length
+      ? await tx.select().from(assignmentResponses).where(inArray(assignmentResponses.assignmentId, aIds)).orderBy(desc(assignmentResponses.createdAt))
+      : [];
     const drafts = await tx
       .select()
       .from(messageDrafts)
-      .where(and(eq(messageDrafts.entityType, 'order_line'), inArray(messageDrafts.entityId, lines.length ? lines.map((x) => x.l.id) : ['00000000-0000-0000-0000-000000000000'])))
+      .where(
+        and(
+          eq(messageDrafts.entityType, 'order_line'),
+          inArray(messageDrafts.entityId, lines.length ? lines.map((x) => x.l.id) : ['00000000-0000-0000-0000-000000000000']),
+        ),
+      )
       .orderBy(desc(messageDrafts.createdAt));
     const conflicts = await tx.select().from(orderConflicts).where(eq(orderConflicts.orderId, orderId)).orderBy(desc(orderConflicts.raisedAt));
     const revisions = await tx.select().from(orderRevisions).where(eq(orderRevisions.orderId, orderId)).orderBy(desc(orderRevisions.revisionNo));

@@ -11,14 +11,7 @@ type Stop = { purpose: 'pickup' | 'dropoff' | 'driver_own_work'; label: string; 
  * Manual route and manifest editor. Only explicit driver records are offered as drivers;
  * vehicles show confirmed passenger seats or "unknown". Validation happens on the server.
  */
-export function TripBuilder(props: {
-  branchId: string;
-  serviceDate: string;
-  drivers: Opt[];
-  vehicles: Opt[];
-  locations: Opt[];
-  people: Person[];
-}) {
+export function TripBuilder(props: { branchId: string; serviceDate: string; drivers: Opt[]; vehicles: Opt[]; locations: Opt[]; people: Person[] }) {
   const [legType, setLegType] = useState<'outbound' | 'return' | 'ad_hoc'>('outbound');
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
@@ -130,13 +123,28 @@ export function TripBuilder(props: {
               </select>
             </L>
             <L id={`st-${i}`} label="Minutes from previous">
-              <input id={`st-${i}`} type="number" inputMode="numeric" min={0} disabled={i === 0} value={s.travelMinutesFromPrevious} onChange={(e) => setStop(i, { travelMinutesFromPrevious: e.target.value })} className={inputClass} />
+              <input
+                id={`st-${i}`}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                disabled={i === 0}
+                value={s.travelMinutesFromPrevious}
+                onChange={(e) => setStop(i, { travelMinutesFromPrevious: e.target.value })}
+                className={inputClass}
+              />
             </L>
             <div className="flex items-center gap-2 md:col-span-1">
               <label htmlFor={`sn-${i}`} className="sr-only">
                 Stop name
               </label>
-              <input id={`sn-${i}`} placeholder="Name, e.g. Town square…" value={s.label} onChange={(e) => setStop(i, { label: e.target.value })} className={inputClass} />
+              <input
+                id={`sn-${i}`}
+                placeholder="Name, e.g. Town square…"
+                value={s.label}
+                onChange={(e) => setStop(i, { label: e.target.value })}
+                className={inputClass}
+              />
               {stops.length > 2 ? (
                 <button type="button" onClick={() => setStops((x) => x.filter((_, j) => j !== i))} className="text-xs text-bad hover:underline">
                   Remove
@@ -145,7 +153,11 @@ export function TripBuilder(props: {
             </div>
           </div>
         ))}
-        <button type="button" onClick={() => setStops((x) => [...x, { purpose: 'dropoff', label: '', workLocationId: '', travelMinutesFromPrevious: '' }])} className="self-start rounded-[var(--radius-ui)] border border-hairline-strong px-3 py-1.5 text-sm hover:bg-surface-2">
+        <button
+          type="button"
+          onClick={() => setStops((x) => [...x, { purpose: 'dropoff', label: '', workLocationId: '', travelMinutesFromPrevious: '' }])}
+          className="self-start rounded-[var(--radius-ui)] border border-hairline-strong px-3 py-1.5 text-sm hover:bg-surface-2"
+        >
           Add Stop
         </button>
       </fieldset>
@@ -177,13 +189,23 @@ export function TripBuilder(props: {
                     <label className="text-xs text-ink-subtle" htmlFor={`b-${p.assignmentId}`}>
                       Board
                     </label>
-                    <select id={`b-${p.assignmentId}`} value={r.board} onChange={(e) => setRiders((x) => ({ ...x, [p.assignmentId]: { ...r, board: Number(e.target.value) } }))} className="h-7 rounded border border-hairline-strong bg-surface px-1 text-xs">
+                    <select
+                      id={`b-${p.assignmentId}`}
+                      value={r.board}
+                      onChange={(e) => setRiders((x) => ({ ...x, [p.assignmentId]: { ...r, board: Number(e.target.value) } }))}
+                      className="h-7 rounded border border-hairline-strong bg-surface px-1 text-xs"
+                    >
                       {stopOptions}
                     </select>
                     <label className="text-xs text-ink-subtle" htmlFor={`a-${p.assignmentId}`}>
                       Get off
                     </label>
-                    <select id={`a-${p.assignmentId}`} value={r.alight} onChange={(e) => setRiders((x) => ({ ...x, [p.assignmentId]: { ...r, alight: Number(e.target.value) } }))} className="h-7 rounded border border-hairline-strong bg-surface px-1 text-xs">
+                    <select
+                      id={`a-${p.assignmentId}`}
+                      value={r.alight}
+                      onChange={(e) => setRiders((x) => ({ ...x, [p.assignmentId]: { ...r, alight: Number(e.target.value) } }))}
+                      className="h-7 rounded border border-hairline-strong bg-surface px-1 text-xs"
+                    >
                       {stopOptions}
                     </select>
                   </>

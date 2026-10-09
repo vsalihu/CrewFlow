@@ -42,4 +42,3 @@ export async function withContext<T>(db: Db, ctx: DbContext, fn: (tx: Tx) => Pro
     return fn(tx);
   });
 }
-

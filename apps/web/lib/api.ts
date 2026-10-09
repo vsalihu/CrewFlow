@@ -43,7 +43,9 @@ export function route<P = Record<string, string>>(handler: Handler<P>, opts: { s
       if (e instanceof ZodError) {
         const fieldErrors: Record<string, string[]> = {};
         for (const i of e.issues) (fieldErrors[i.path.join('.') || '_'] ??= []).push(i.message);
-        return NextResponse.json(errorBody(new DomainError('VALIDATION_FAILED', 'Check the highlighted fields.', { fieldErrors }), correlationId), { status: 422 });
+        return NextResponse.json(errorBody(new DomainError('VALIDATION_FAILED', 'Check the highlighted fields.', { fieldErrors }), correlationId), {
+          status: 422,
+        });
       }
       if (isDomainError(e)) return NextResponse.json(errorBody(e, correlationId), { status: e.status });
       console.error(JSON.stringify({ level: 'error', correlationId, message: e instanceof Error ? e.message : 'unknown error' }));

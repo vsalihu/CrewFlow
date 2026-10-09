@@ -31,10 +31,20 @@ export async function listExternalBookingQueue(ctx: ServiceContext, branchId: st
       .innerJoin(orderLines, eq(orderLines.id, assignments.lineId))
       .innerJoin(orders, eq(orders.id, assignments.orderId))
       .leftJoin(sites, eq(sites.id, orderLines.siteId))
-      .where(and(eq(externalBookings.branchId, branchId), inArray(externalBookings.state, ['pending_entry', 'entered_unverified', 'verified', 'discrepancy', 'failed'])))
+      .where(
+        and(
+          eq(externalBookings.branchId, branchId),
+          inArray(externalBookings.state, ['pending_entry', 'entered_unverified', 'verified', 'discrepancy', 'failed']),
+        ),
+      )
       .orderBy(asc(orderLines.serviceDate), asc(orders.reference));
     const ids = rows.map((r) => r.workerId);
-    const ext = ids.length ? await tx.select().from(externalWorkerIds).where(and(inArray(externalWorkerIds.workerId, ids), eq(externalWorkerIds.provider, 'joinedup'))) : [];
+    const ext = ids.length
+      ? await tx
+          .select()
+          .from(externalWorkerIds)
+          .where(and(inArray(externalWorkerIds.workerId, ids), eq(externalWorkerIds.provider, 'joinedup')))
+      : [];
     return rows.map((r) => ({
       ...r,
       joinedUpWorkerId: ext.find((e) => e.workerId === r.workerId)?.externalId ?? null,
@@ -59,12 +69,26 @@ export async function updateExternalBooking(ctx: ServiceContext, id: string, raw
     switch (input.action) {
       case 'entered':
         if (!extId) throw new DomainError('VALIDATION_FAILED', 'Record the JoinedUp booking ID.', { fieldErrors: { externalBookingId: ['Required.'] } });
-        Object.assign(set, { state: 'entered_unverified', externalBookingId: extId, enteredBy: actorId(ctx.actor), enteredAt: nowOf(ctx), lineVersion: line!.v });
+        Object.assign(set, {
+          state: 'entered_unverified',
+          externalBookingId: extId,
+          enteredBy: actorId(ctx.actor),
+          enteredAt: nowOf(ctx),
+          lineVersion: line!.v,
+        });
         break;
       case 'verified':
         if (!extId || !evidence) throw new DomainError('VALIDATION_FAILED', 'Verification needs the JoinedUp booking ID and what you checked.');
-        if (a!.state !== 'accepted' && a!.state !== 'arrived') throw new DomainError('INVALID_STATE', `The assignment is ${a!.state}; do not verify a booking for it.`);
-        Object.assign(set, { state: 'verified', externalBookingId: extId, verifiedBy: actorId(ctx.actor), verifiedAt: nowOf(ctx), evidenceNote: evidence, lineVersion: line!.v });
+        if (a!.state !== 'accepted' && a!.state !== 'arrived')
+          throw new DomainError('INVALID_STATE', `The assignment is ${a!.state}; do not verify a booking for it.`);
+        Object.assign(set, {
+          state: 'verified',
+          externalBookingId: extId,
+          verifiedBy: actorId(ctx.actor),
+          verifiedAt: nowOf(ctx),
+          evidenceNote: evidence,
+          lineVersion: line!.v,
+        });
         break;
       case 'failed':
       case 'discrepancy':
@@ -78,7 +102,14 @@ export async function updateExternalBooking(ctx: ServiceContext, id: string, raw
         break;
     }
     await tx.update(externalBookings).set(set).where(eq(externalBookings.id, b.id));
-    await audit(tx, ctx, { action: `external_booking.${input.action}`, entityType: 'external_booking', entityId: b.id, before: { state: b.state }, after: { state: set.state, externalBookingId: extId }, reason: evidence });
+    await audit(tx, ctx, {
+      action: `external_booking.${input.action}`,
+      entityType: 'external_booking',
+      entityId: b.id,
+      before: { state: b.state },
+      after: { state: set.state, externalBookingId: extId },
+      reason: evidence,
+    });
     return { state: set.state as string, version: b.version + 1 };
   });
 }

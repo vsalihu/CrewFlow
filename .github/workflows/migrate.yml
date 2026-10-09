@@ -1,0 +1,31 @@
+name: Migrate database
+
+# Migrations run here, with owner credentials held only in the protected GitHub environment.
+# The deployed web and worker services never receive DATABASE_MIGRATION_URL.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options: [staging, production]
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply reviewed migrations
+        run: pnpm db:migrate
+        env:
+          DATABASE_MIGRATION_URL: ${{ secrets.DATABASE_MIGRATION_URL }}
+      - name: Record promotion
+        run: echo "Migrated ${{ inputs.environment }} at $(date -u +%FT%TZ) from ${GITHUB_SHA} by ${GITHUB_ACTOR}" >> "$GITHUB_STEP_SUMMARY"

@@ -81,7 +81,10 @@ export const memberships = app.table(
     email: text(),
     status: text().notNull().default('active'),
     /** Organisation-wide roles, e.g. org_admin. Branch roles live in branch_memberships. */
-    roles: text().array().notNull().default(sql`'{}'::text[]`),
+    roles: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     ...audited(),
   },
   (t) => [unique().on(t.organisationId, t.id), unique().on(t.authUserId, t.organisationId)],
@@ -94,7 +97,10 @@ export const branchMemberships = app.table(
     organisationId: orgId(),
     membershipId: uuid().notNull(),
     branchId: uuid().notNull(),
-    roles: text().array().notNull().default(sql`'{}'::text[]`),
+    roles: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     ...audited(),
   },
   (t) => [
@@ -153,14 +159,14 @@ export const clientContacts = app.table(
     name: text().notNull(),
     roleTitle: text(),
     authorityScope: text(),
-    allowedSiteIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    allowedSiteIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     status: text().notNull().default('active'),
     ...audited(),
   },
-  (t) => [
-    unique().on(t.organisationId, t.id),
-    foreignKey({ columns: [t.organisationId, t.clientId], foreignColumns: [clients.organisationId, clients.id] }),
-  ],
+  (t) => [unique().on(t.organisationId, t.id), foreignKey({ columns: [t.organisationId, t.clientId], foreignColumns: [clients.organisationId, clients.id] })],
 );
 
 export const sites = app.table(
@@ -202,10 +208,7 @@ export const workLocations = app.table(
     verifiedBy: uuid(),
     ...audited(),
   },
-  (t) => [
-    unique().on(t.organisationId, t.id),
-    foreignKey({ columns: [t.organisationId, t.siteId], foreignColumns: [sites.organisationId, sites.id] }),
-  ],
+  (t) => [unique().on(t.organisationId, t.id), foreignKey({ columns: [t.organisationId, t.siteId], foreignColumns: [sites.organisationId, sites.id] })],
 );
 
 export const siteAliases = app.table(
@@ -461,10 +464,7 @@ export const conversations = app.table(
     clientId: uuid(),
     ...audited(),
   },
-  (t) => [
-    unique().on(t.organisationId, t.id),
-    foreignKey({ columns: [t.organisationId, t.branchId], foreignColumns: [branches.organisationId, branches.id] }),
-  ],
+  (t) => [unique().on(t.organisationId, t.id), foreignKey({ columns: [t.organisationId, t.branchId], foreignColumns: [branches.organisationId, branches.id] })],
 );
 
 /** Original evidence. Raw text is preserved exactly as received and never edited. */
@@ -589,14 +589,14 @@ export const orderRevisions = app.table(
     changes: jsonb().notNull().default([]),
     reason: text().notNull(),
     actorId: uuid(),
-    sourceMessageIds: uuid().array().notNull().default(sql`'{}'::uuid[]`),
+    sourceMessageIds: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
     effectiveAt: ts().notNull().defaultNow(),
     createdAt: ts().notNull().defaultNow(),
   },
-  (t) => [
-    unique().on(t.orderId, t.revisionNo),
-    foreignKey({ columns: [t.organisationId, t.orderId], foreignColumns: [orders.organisationId, orders.id] }),
-  ],
+  (t) => [unique().on(t.orderId, t.revisionNo), foreignKey({ columns: [t.organisationId, t.orderId], foreignColumns: [orders.organisationId, orders.id] })],
 );
 
 export const orderSourceLinks = app.table(
@@ -695,9 +695,7 @@ export const assignmentResponses = app.table(
     outcome: text().notNull(),
     createdAt: ts().notNull().defaultNow(),
   },
-  (t) => [
-    foreignKey({ columns: [t.organisationId, t.assignmentId], foreignColumns: [assignments.organisationId, assignments.id] }),
-  ],
+  (t) => [foreignKey({ columns: [t.organisationId, t.assignmentId], foreignColumns: [assignments.organisationId, assignments.id] })],
 );
 
 /**
@@ -938,7 +936,9 @@ export const tasks = app.table(
     unique().on(t.organisationId, t.id),
     index().on(t.organisationId, t.ownerMembershipId, t.state, t.dueAt),
     index().on(t.organisationId, t.entityType, t.entityId),
-    uniqueIndex('tasks_open_dedupe').on(t.organisationId, t.dedupeKey).where(sql`state in ('open','in_progress') and dedupe_key is not null`),
+    uniqueIndex('tasks_open_dedupe')
+      .on(t.organisationId, t.dedupeKey)
+      .where(sql`state in ('open','in_progress') and dedupe_key is not null`),
   ],
 );
 
@@ -1012,10 +1012,7 @@ export const messageDrafts = app.table(
     endReason: text(),
     ...audited(),
   },
-  (t) => [
-    unique().on(t.organisationId, t.id),
-    index().on(t.organisationId, t.entityType, t.entityId, t.state),
-  ],
+  (t) => [unique().on(t.organisationId, t.id), index().on(t.organisationId, t.entityType, t.entityId, t.state)],
 );
 
 /** JoinedUp remains the system of record. "Exported" is not "confirmed in JoinedUp". */

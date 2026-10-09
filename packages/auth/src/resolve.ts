@@ -16,9 +16,7 @@ export async function resolveStaffActor(db: Db, authUserId: string, organisation
   if (!orgId || !orgIds.includes(orgId)) {
     throw new DomainError('PERMISSION_DENIED', 'No active membership for this organisation.');
   }
-  const branchRows = await withContext(db, { organisationId: orgId, branchIds: [] }, (tx) =>
-    tx.execute(sql`select id from app.branches`),
-  );
+  const branchRows = await withContext(db, { organisationId: orgId, branchIds: [] }, (tx) => tx.execute(sql`select id from app.branches`));
   const allBranchIds = (branchRows.rows as { id: string }[]).map((r) => r.id);
   const actor = buildStaffActor(rows, orgId, allBranchIds);
   if (!actor) throw new DomainError('PERMISSION_DENIED', 'No active membership for this organisation.');

@@ -1,0 +1,19 @@
+{
+  "name": "@cds/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cds/contracts": "workspace:*",
+    "@cds/db": "workspace:*",
+    "@cds/domain": "workspace:*",
+    "@cds/integrations": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "pg-boss": "12.37.1",
+    "tsx": "4.23.15"
+  }
+}

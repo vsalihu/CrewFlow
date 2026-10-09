@@ -18,7 +18,15 @@ export default async function WorkersPage({ searchParams }: { searchParams: Prom
         <label htmlFor="q" className="sr-only">
           Search
         </label>
-        <input id="q" name="q" defaultValue={sp.q ?? ''} placeholder="Name, alias or exact JoinedUp ID…" spellCheck={false} autoComplete="off" className={inputClass} />
+        <input
+          id="q"
+          name="q"
+          defaultValue={sp.q ?? ''}
+          placeholder="Name, alias or exact JoinedUp ID…"
+          spellCheck={false}
+          autoComplete="off"
+          className={inputClass}
+        />
         <Button type="submit">Search</Button>
       </form>
       <Panel title={`${rows.length} worker(s)`}>
@@ -49,7 +57,9 @@ export default async function WorkersPage({ searchParams }: { searchParams: Prom
                     <td className={`${td} font-mono num text-xs`} translate="no">
                       {r.externalIds.map((e) => `${e.provider}: ${e.externalId}`).join(', ') || 'none'}
                     </td>
-                    <td className={`${td} text-xs`}>{r.skills.map((s) => `${s.skill}${s.expiresOn ? ` (to ${s.expiresOn})` : ''}`).join(', ') || 'none recorded'}</td>
+                    <td className={`${td} text-xs`}>
+                      {r.skills.map((s) => `${s.skill}${s.expiresOn ? ` (to ${s.expiresOn})` : ''}`).join(', ') || 'none recorded'}
+                    </td>
                     <td className={td}>{r.readinessBlocking ? <Badge tone="bad">{r.readinessBlocking}</Badge> : <Badge tone="ok">cleared</Badge>}</td>
                     <td className={`${td} text-xs`}>
                       {r.upcoming.length
