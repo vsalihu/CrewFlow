@@ -11,3 +11,5 @@ test-results/
 # Never commit real chat exports or worker data
 imports/
 *.zip
+.dev-users.json
+next-env.d.ts

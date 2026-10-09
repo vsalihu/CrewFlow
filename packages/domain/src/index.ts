@@ -13,3 +13,4 @@ export * from './externalBookings';
 export * from './operations';
 export * from './handover';
 export * from './outbox';
+export * from './views';

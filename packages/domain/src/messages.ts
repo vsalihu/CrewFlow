@@ -46,11 +46,11 @@ async function verifiedContact(tx: Tx, who: { workerId?: string; driverId?: stri
 }
 
 function transportText(r: { mode: string; tripRef: string | null; note: string | null } | undefined): string {
-  if (!r) return 'not arranged yet: we will contact you';
-  if (r.mode === 'agency_trip') return `agency transport${r.tripRef ? ` (${r.tripRef})` : ''}: details from your driver`;
+  if (!r) return 'not arranged yet (we will contact you)';
+  if (r.mode === 'agency_trip') return `agency transport${r.tripRef ? ` ${r.tripRef}` : ''} (details from your driver)`;
   if (r.mode === 'private_confirmed') return 'your own arrangement, as agreed';
   if (r.mode === 'not_required') return 'not needed';
-  return 'not arranged yet: we will contact you';
+  return 'not arranged yet (we will contact you)';
 }
 
 async function shiftFacts(tx: Tx, assignmentId: string) {

@@ -1,0 +1,146 @@
+@import 'tailwindcss';
+
+/* CDS Operations design tokens. See /DESIGN.md for the rationale.
+   One accent (deep teal), neutral surfaces, semantic status colours that are
+   always paired with a text label. Light by default, dark via system preference. */
+
+:root {
+  color-scheme: light;
+  --canvas: #f7f8f8;
+  --surface: #ffffff;
+  --surface-2: #f1f3f4;
+  --hairline: #e1e4e6;
+  --hairline-strong: #c9ced2;
+  --ink: #15181b;
+  --ink-muted: #474e55;
+  --ink-subtle: #6a7178;
+  --accent: #0f6b62;
+  --accent-hover: #0b5850;
+  --on-accent: #ffffff;
+  --focus: #0f6b62;
+  --ok: #17663a;
+  --ok-bg: #e5f4ea;
+  --warn: #8a5300;
+  --warn-bg: #fdf1dc;
+  --bad: #a3221b;
+  --bad-bg: #fbe7e5;
+  --info: #1d4f91;
+  --info-bg: #e6eefa;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --canvas: #0e1011;
+    --surface: #15181a;
+    --surface-2: #1b1f21;
+    --hairline: #272c2f;
+    --hairline-strong: #363c40;
+    --ink: #eef1f2;
+    --ink-muted: #c3c9cd;
+    --ink-subtle: #8f979c;
+    --accent: #3fb3a5;
+    --accent-hover: #5cc6b9;
+    --on-accent: #06221f;
+    --focus: #5cc6b9;
+    --ok: #7fd6a0;
+    --ok-bg: #12301f;
+    --warn: #f2bd6b;
+    --warn-bg: #33250d;
+    --bad: #f39a92;
+    --bad-bg: #3a1714;
+    --info: #9cc2f5;
+    --info-bg: #142640;
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --canvas: #0e1011;
+  --surface: #15181a;
+  --surface-2: #1b1f21;
+  --hairline: #272c2f;
+  --hairline-strong: #363c40;
+  --ink: #eef1f2;
+  --ink-muted: #c3c9cd;
+  --ink-subtle: #8f979c;
+  --accent: #3fb3a5;
+  --accent-hover: #5cc6b9;
+  --on-accent: #06221f;
+  --focus: #5cc6b9;
+  --ok: #7fd6a0;
+  --ok-bg: #12301f;
+  --warn: #f2bd6b;
+  --warn-bg: #33250d;
+  --bad: #f39a92;
+  --bad-bg: #3a1714;
+  --info: #9cc2f5;
+  --info-bg: #142640;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-hairline: var(--hairline);
+  --color-hairline-strong: var(--hairline-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-on-accent: var(--on-accent);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius-ui: 6px;
+}
+
+html,
+body {
+  background: var(--canvas);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Absolutely positioned descendants (e.g. sr-only labels in table cells) must be clipped by
+   their scroll container, or they widen the page on small screens. */
+.overflow-x-auto {
+  position: relative;
+}

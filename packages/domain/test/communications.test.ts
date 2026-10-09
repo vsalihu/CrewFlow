@@ -50,7 +50,7 @@ describe('message drafts', () => {
     expect(sent.state).toBe('manually_marked_sent'); // a human send, not provider delivery
     await recordWorkerResponse(ctx, assignmentIds[0]!, { lineVersion: 1, response: 'accepted', channel: 'whatsapp_manual', respondedAt: '2026-10-09T18:20:00+01:00' });
     const booking = await generateDraft(ctx, { template: 'worker_booking', assignmentId: assignmentIds[0]! });
-    expect(booking.content).toContain('Transport there: not arranged yet');
+    expect(booking.content).toContain('Transport there: not arranged yet (we will contact you)');
     expect(booking.content).toContain('what3words ///example.packhouse.gate');
   });
 
