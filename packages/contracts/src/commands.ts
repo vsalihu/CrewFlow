@@ -29,7 +29,7 @@ export const lineInputSchema = z.strictObject({
   breakRule: text(500).nullish(),
   notes: text(2000).nullish(),
 });
-export type LineInput = z.infer<typeof lineInputSchema>;
+export type LineInput = z.input<typeof lineInputSchema>;
 
 export const captureSourceSchema = z.strictObject({
   branchId: uuid,
@@ -42,7 +42,7 @@ export const captureSourceSchema = z.strictObject({
   rawText: z.string().min(1).max(100_000),
   callerName: text(200).nullish(),
 });
-export type CaptureSourceInput = z.infer<typeof captureSourceSchema>;
+export type CaptureSourceInput = z.input<typeof captureSourceSchema>;
 
 export const createOrderSchema = z.strictObject({
   branchId: uuid,
@@ -54,10 +54,10 @@ export const createOrderSchema = z.strictObject({
   requestState: z.enum(['received', 'needs_clarification', 'draft']).optional(),
   lines: z.array(lineInputSchema).min(1),
 });
-export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+export type CreateOrderInput = z.input<typeof createOrderSchema>;
 
 export const lineChangeSchema = lineInputSchema.partial().extend({ lineId: uuid });
-export type LineChange = z.infer<typeof lineChangeSchema>;
+export type LineChange = z.input<typeof lineChangeSchema>;
 
 export const amendmentSchema = z.strictObject({
   expectedVersion: z.number().int().min(1),
@@ -67,14 +67,14 @@ export const amendmentSchema = z.strictObject({
   addLines: z.array(lineInputSchema).default([]),
   acknowledgeImpactToken: z.string().min(1).optional(),
 });
-export type AmendmentInput = z.infer<typeof amendmentSchema>;
+export type AmendmentInput = z.input<typeof amendmentSchema>;
 
 export const acceptanceSchema = z.strictObject({
   expectedVersion: z.number().int().min(1),
   decisions: z.array(z.strictObject({ lineId: uuid, acceptedCount: count })).min(1),
   note: text(1000).nullish(),
 });
-export type AcceptanceInput = z.infer<typeof acceptanceSchema>;
+export type AcceptanceInput = z.input<typeof acceptanceSchema>;
 
 export const cancellationSchema = z.strictObject({
   expectedVersion: z.number().int().min(1),
@@ -84,7 +84,7 @@ export const cancellationSchema = z.strictObject({
   reason: text(1000),
   sourceMessageIds: z.array(uuid).default([]),
 });
-export type CancellationInput = z.infer<typeof cancellationSchema>;
+export type CancellationInput = z.input<typeof cancellationSchema>;
 
 export const raiseConflictSchema = z.strictObject({
   lineId: uuid.nullish(),
@@ -93,20 +93,20 @@ export const raiseConflictSchema = z.strictObject({
     .array(z.strictObject({ value: z.string().max(500), sourceMessageId: uuid.nullish(), note: z.string().max(1000).nullish() }))
     .min(2, 'A conflict needs at least two observed values.'),
 });
-export type RaiseConflictInput = z.infer<typeof raiseConflictSchema>;
+export type RaiseConflictInput = z.input<typeof raiseConflictSchema>;
 
 export const resolveConflictSchema = z.strictObject({
   resolvedValue: z.string().max(500),
   note: text(1000),
 });
-export type ResolveConflictInput = z.infer<typeof resolveConflictSchema>;
+export type ResolveConflictInput = z.input<typeof resolveConflictSchema>;
 
 export const proposeAssignmentsSchema = z.strictObject({
   workers: z
     .array(z.strictObject({ workerId: uuid, rawTransportLabel: z.string().max(100).nullish() }))
     .min(1),
 });
-export type ProposeAssignmentsInput = z.infer<typeof proposeAssignmentsSchema>;
+export type ProposeAssignmentsInput = z.input<typeof proposeAssignmentsSchema>;
 
 export const workerResponseSchema = z.strictObject({
   lineVersion: z.number().int().min(1),
@@ -115,7 +115,7 @@ export const workerResponseSchema = z.strictObject({
   respondedAt: z.iso.datetime({ offset: true }),
   evidenceNote: z.string().max(2000).nullish(),
 });
-export type WorkerResponseInput = z.infer<typeof workerResponseSchema>;
+export type WorkerResponseInput = z.input<typeof workerResponseSchema>;
 
 const stopSchema = z.strictObject({
   purpose: z.enum(['pickup', 'dropoff', 'driver_own_work']),
@@ -143,20 +143,20 @@ export const tripManifestSchema = z.strictObject({
   stops: z.array(stopSchema).min(2, 'A journey needs at least two stops.'),
   passengers: z.array(passengerSchema).default([]),
 });
-export type TripManifestInput = z.infer<typeof tripManifestSchema>;
+export type TripManifestInput = z.input<typeof tripManifestSchema>;
 
 export const createTripSchema = tripManifestSchema.extend({
   branchId: uuid,
   serviceDate: localDate,
   legType: z.enum(['outbound', 'return', 'ad_hoc', 'repositioning']),
 });
-export type CreateTripInput = z.infer<typeof createTripSchema>;
+export type CreateTripInput = z.input<typeof createTripSchema>;
 
 export const reviseTripSchema = tripManifestSchema.extend({
   expectedVersion: z.number().int().min(1),
   reason: text(1000),
 });
-export type ReviseTripInput = z.infer<typeof reviseTripSchema>;
+export type ReviseTripInput = z.input<typeof reviseTripSchema>;
 
 export const tripAcceptanceSchema = z.strictObject({
   revisionNo: z.number().int().min(1),
@@ -165,7 +165,7 @@ export const tripAcceptanceSchema = z.strictObject({
   decidedAt: z.iso.datetime({ offset: true }),
   note: z.string().max(2000).nullish(),
 });
-export type TripAcceptanceInput = z.infer<typeof tripAcceptanceSchema>;
+export type TripAcceptanceInput = z.input<typeof tripAcceptanceSchema>;
 
 export const transportRequirementSchema = z.strictObject({
   leg: z.enum(['outbound', 'return']),
@@ -173,7 +173,7 @@ export const transportRequirementSchema = z.strictObject({
   accountableMembershipId: uuid.nullish(),
   arrangementNote: z.string().max(1000).nullish(),
 });
-export type TransportRequirementInput = z.infer<typeof transportRequirementSchema>;
+export type TransportRequirementInput = z.input<typeof transportRequirementSchema>;
 
 export const draftMessageSchema = z.strictObject({
   template: z.enum(['worker_offer', 'worker_booking', 'driver_manifest', 'amendment', 'cancellation', 'client_receipt', 'agency_acceptance']),
@@ -181,14 +181,14 @@ export const draftMessageSchema = z.strictObject({
   tripId: uuid.nullish(),
   orderId: uuid.nullish(),
 });
-export type DraftMessageInput = z.infer<typeof draftMessageSchema>;
+export type DraftMessageInput = z.input<typeof draftMessageSchema>;
 
 export const manualSentSchema = z.strictObject({
   expectedVersion: z.number().int().min(1),
   channel: z.enum(['whatsapp_manual', 'sms_manual', 'phone', 'email', 'in_person']),
   sentAt: z.iso.datetime({ offset: true }),
 });
-export type ManualSentInput = z.infer<typeof manualSentSchema>;
+export type ManualSentInput = z.input<typeof manualSentSchema>;
 
 export const externalBookingUpdateSchema = z.strictObject({
   expectedVersion: z.number().int().min(1),
@@ -196,9 +196,13 @@ export const externalBookingUpdateSchema = z.strictObject({
   externalBookingId: z.string().trim().max(200).nullish(),
   evidenceNote: z.string().trim().max(2000).nullish(),
 });
-export type ExternalBookingUpdateInput = z.infer<typeof externalBookingUpdateSchema>;
+export type ExternalBookingUpdateInput = z.input<typeof externalBookingUpdateSchema>;
 
 export const taskOutcomeSchema = z.strictObject({
   outcome: z.string().max(4000),
   expectedVersion: z.number().int().min(1).optional(),
 });
+
+/** Parsed (defaults applied) shapes used inside domain services after validation. */
+export type Amendment = z.output<typeof amendmentSchema>;
+export type TripManifest = z.output<typeof tripManifestSchema>;

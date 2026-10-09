@@ -120,6 +120,7 @@ export type MessageTemplate = (typeof MESSAGE_TEMPLATES)[number];
 export const MESSAGE_DRAFT_STATES = [
   'draft',
   'copied',
+  'queued',
   'manually_marked_sent',
   'provider_accepted',
   'delivered',

@@ -11,6 +11,7 @@ import {
   raiseConflictSchema,
   resolveConflictSchema,
   type AcceptanceInput,
+  type Amendment,
   type AmendmentInput,
   type CancellationInput,
   type CreateOrderInput,
@@ -273,7 +274,7 @@ export type AmendmentImpact = {
   token: string;
 };
 
-function inputHash(orderId: string, input: Omit<AmendmentInput, 'acknowledgeImpactToken'>): string {
+function inputHash(orderId: string, input: Omit<Amendment, 'acknowledgeImpactToken'>): string {
   const { expectedVersion, lineChanges, addLines, reason, sourceMessageIds } = input;
   return createHash('sha256').update(JSON.stringify({ orderId, expectedVersion, lineChanges, addLines, reason, sourceMessageIds })).digest('hex');
 }
@@ -316,7 +317,7 @@ function planLineChange(line: LineRow, change: LineChange): PlannedLineChange {
   return { line, next, changed, material };
 }
 
-async function computeImpact(tx: Tx, order: OrderRow, input: AmendmentInput): Promise<Omit<AmendmentImpact, 'token'> & { plans: PlannedLineChange[] }> {
+async function computeImpact(tx: Tx, order: OrderRow, input: Amendment): Promise<Omit<AmendmentImpact, 'token'> & { plans: PlannedLineChange[] }> {
   const lineIds = input.lineChanges.map((c) => c.lineId);
   const lines = lineIds.length ? await tx.select().from(orderLines).where(and(eq(orderLines.orderId, order.id), inArray(orderLines.id, lineIds))) : [];
   if (lines.length !== new Set(lineIds).size) throw new DomainError('VALIDATION_FAILED', 'A changed line does not belong to this order.');
@@ -381,7 +382,7 @@ async function computeImpact(tx: Tx, order: OrderRow, input: AmendmentInput): Pr
     reconfirmations,
     staleOffers,
     excessAssignments,
-    pendingMessagesToSupersede: drafts.filter((d) => d.state === 'draft' || d.state === 'copied').length,
+    pendingMessagesToSupersede: drafts.filter((d) => ['draft', 'copied', 'queued'].includes(d.state)).length,
     sentMessagesNeedingAmendment: drafts.filter((d) => ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged'].includes(d.state)).length,
     tripsAffected: tripRows,
     externalBookingsToUpdate: ext.length,
@@ -522,7 +523,7 @@ export async function amendOrder(ctx: ServiceContext, orderId: string, raw: Amen
         await tx
           .update(messageDrafts)
           .set({ state: 'superseded', endedAt: nowOf(ctx), endReason: `Order revision ${revisionNo}`, version: sql`${messageDrafts.version} + 1` })
-          .where(and(eq(messageDrafts.entityType, 'order_line'), eq(messageDrafts.entityId, line.id), inArray(messageDrafts.state, ['draft', 'copied'])));
+          .where(and(eq(messageDrafts.entityType, 'order_line'), eq(messageDrafts.entityId, line.id), inArray(messageDrafts.state, ['draft', 'copied', 'queued'])));
         const sent = await tx
           .select({ id: messageDrafts.id, assignmentId: messageDrafts.assignmentId })
           .from(messageDrafts)
@@ -777,7 +778,7 @@ export async function cancelOrder(ctx: ServiceContext, orderId: string, raw: Can
       await tx
         .update(messageDrafts)
         .set({ state: 'withdrawn', endedAt: nowOf(ctx), endReason: `Cancelled: ${input.reason}`, version: sql`${messageDrafts.version} + 1` })
-        .where(and(inArray(messageDrafts.assignmentId, affectedIds), inArray(messageDrafts.state, ['draft', 'copied'])));
+        .where(and(inArray(messageDrafts.assignmentId, affectedIds), inArray(messageDrafts.state, ['draft', 'copied', 'queued'])));
       // People already told must be told it is cancelled, and that must be acknowledged.
       const informed = await tx
         .selectDistinct({ assignmentId: messageDrafts.assignmentId })

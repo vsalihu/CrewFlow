@@ -431,7 +431,7 @@ CREATE OR REPLACE FUNCTION app.claim_outbox(p_limit integer)
   RETURNS TABLE (id uuid, organisation_id uuid, event_type text, entity_type text, entity_id uuid, entity_revision integer, payload jsonb, attempts integer)
   LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = app, pg_temp AS $$
     UPDATE app.outbox_events e
-       SET state = 'processing', attempts = e.attempts + 1
+       SET state = 'processing', attempts = e.attempts + 1, next_attempt_at = now()
      WHERE e.id IN (
        SELECT o.id FROM app.outbox_events o
         WHERE o.state = 'pending' AND o.next_attempt_at <= now()
@@ -447,7 +447,7 @@ CREATE OR REPLACE FUNCTION app.release_stuck_outbox(p_older_than interval)
   LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = app, pg_temp AS $$
     WITH r AS (
       UPDATE app.outbox_events SET state = 'pending', next_attempt_at = now()
-       WHERE state = 'processing' AND coalesce(processed_at, created_at) < now() - p_older_than
+       WHERE state = 'processing' AND next_attempt_at < now() - p_older_than
        RETURNING 1)
     SELECT count(*)::integer FROM r
   $$;

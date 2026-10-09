@@ -96,6 +96,9 @@ importers:
       '@cds/db':
         specifier: workspace:*
         version: link:../db
+      '@cds/integrations':
+        specifier: workspace:*
+        version: link:../integrations
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@types/pg@8.23.1)(pg@8.23.1)
