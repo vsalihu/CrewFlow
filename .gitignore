@@ -1,0 +1,13 @@
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/
+# Never commit real chat exports or worker data
+imports/
+*.zip

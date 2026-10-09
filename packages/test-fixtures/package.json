@@ -1,0 +1,23 @@
+{
+  "name": "@cds/test-fixtures",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "@cds/auth": "workspace:*",
+    "@cds/contracts": "workspace:*",
+    "@cds/db": "workspace:*",
+    "@cds/domain": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "pg": "8.23.1"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "@cds/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@cds/contracts": "workspace:*",
+    "@cds/db": "workspace:*",
+    "@cds/auth": "workspace:*",
+    "drizzle-orm": "0.45.4",
+    "luxon": "3.7.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@cds/test-fixtures": "workspace:*"
+  }
+}
