@@ -1121,3 +1121,206 @@ export const sequences = app.table(
   },
   (t) => [primaryKey({ columns: [t.organisationId, t.name] })],
 );
+
+// ---------------------------------------------------------------- attendance (Phase 2)
+
+/**
+ * Versioned break rule from a client/site agreement. A new version is added rather than
+ * editing an old one. Without an applicable rule, the unpaid break must be entered explicitly.
+ */
+export const breakPolicies = app.table(
+  'break_policies',
+  {
+    id: id(),
+    organisationId: orgId(),
+    clientId: uuid().notNull(),
+    siteId: uuid(),
+    policyVersion: integer().notNull(),
+    effectiveFrom: date({ mode: 'string' }).notNull(),
+    effectiveTo: date({ mode: 'string' }),
+    /** Unpaid break deducted once the elapsed shift reaches `unpaidAfterMinutes`. */
+    unpaidBreakMinutes: integer().notNull(),
+    unpaidAfterMinutes: integer().notNull().default(0),
+    /** Paid break minutes stay inside paid time; recorded for reconciliation only. */
+    paidBreakMinutes: integer().notNull().default(0),
+    agreementReference: text(),
+    note: text(),
+    createdAt: ts().notNull().defaultNow(),
+    createdBy: uuid(),
+  },
+  (t) => [
+    unique().on(t.organisationId, t.id),
+    foreignKey({ columns: [t.organisationId, t.clientId], foreignColumns: [clients.organisationId, clients.id] }),
+    check('break_policy_minutes', sql`${t.unpaidBreakMinutes} >= 0 and ${t.unpaidAfterMinutes} >= 0 and ${t.paidBreakMinutes} >= 0`),
+    index().on(t.organisationId, t.clientId),
+  ],
+);
+
+/** One supervisor's timesheet for a client site and date. The original text is kept as a source message. */
+export const timesheetBatches = app.table(
+  'timesheet_batches',
+  {
+    id: id(),
+    organisationId: orgId(),
+    branchId: uuid().notNull(),
+    clientId: uuid().notNull(),
+    siteId: uuid().notNull(),
+    serviceDate: date({ mode: 'string' }).notNull(),
+    reference: text().notNull(),
+    supervisorName: text().notNull(),
+    sourceMessageId: uuid().notNull(),
+    /** submitted | approved | disputed */
+    state: text().notNull().default('submitted'),
+    recordedBy: uuid().notNull(),
+    disputeNote: text(),
+    ...audited(),
+  },
+  (t) => [
+    unique().on(t.organisationId, t.id),
+    unique().on(t.organisationId, t.reference),
+    foreignKey({ columns: [t.organisationId, t.branchId], foreignColumns: [branches.organisationId, branches.id] }),
+    foreignKey({ columns: [t.organisationId, t.clientId], foreignColumns: [clients.organisationId, clients.id] }),
+    foreignKey({ columns: [t.organisationId, t.siteId], foreignColumns: [sites.organisationId, sites.id] }),
+    foreignKey({ columns: [t.organisationId, t.sourceMessageId], foreignColumns: [sourceMessages.organisationId, sourceMessages.id] }),
+    check('timesheet_state_valid', sql`${t.state} in ('submitted','approved','disputed')`),
+    index().on(t.organisationId, t.branchId, t.serviceDate),
+  ],
+);
+
+/**
+ * Reported work. Rows are never edited: a correction inserts the next revision of the same
+ * `segment_key` and marks the previous row not current (the only column the runtime role may update).
+ */
+export const attendanceSegments = app.table(
+  'attendance_segments',
+  {
+    id: id(),
+    organisationId: orgId(),
+    branchId: uuid().notNull(),
+    batchId: uuid().notNull(),
+    segmentKey: uuid().notNull(),
+    revision: integer().notNull(),
+    isCurrent: boolean().notNull().default(true),
+    /** active | voided (a voided revision reports zero time, e.g. a duplicate line). */
+    status: text().notNull().default('active'),
+    workerId: uuid(),
+    /** Name exactly as written on the timesheet. */
+    rawName: text().notNull(),
+    assignmentId: uuid(),
+    siteId: uuid().notNull(),
+    serviceDate: date({ mode: 'string' }).notNull(),
+    startLocal: time().notNull(),
+    endLocal: time().notNull(),
+    endDayOffset: integer().notNull().default(0),
+    startAt: ts().notNull(),
+    endAt: ts().notNull(),
+    elapsedMinutes: integer().notNull(),
+    unpaidBreakMinutes: integer().notNull(),
+    paidBreakMinutes: integer().notNull().default(0),
+    paidMinutes: integer().notNull(),
+    /** "reported" (as written on the timesheet) or "rule v<N>" (applied break policy). */
+    breakBasis: text().notNull(),
+    breakPolicyId: uuid(),
+    note: text(),
+    reason: text().notNull(),
+    recordedBy: uuid().notNull(),
+    createdAt: ts().notNull().defaultNow(),
+    supersededAt: ts(),
+  },
+  (t) => [
+    unique().on(t.organisationId, t.id),
+    unique().on(t.segmentKey, t.revision),
+    foreignKey({ columns: [t.organisationId, t.batchId], foreignColumns: [timesheetBatches.organisationId, timesheetBatches.id] }),
+    foreignKey({ columns: [t.organisationId, t.workerId], foreignColumns: [workers.organisationId, workers.id] }),
+    foreignKey({ columns: [t.organisationId, t.assignmentId], foreignColumns: [assignments.organisationId, assignments.id] }),
+    check('segment_status_valid', sql`${t.status} in ('active','voided')`),
+    check('segment_times', sql`${t.endAt} > ${t.startAt}`),
+    check(
+      'segment_minutes',
+      sql`${t.elapsedMinutes} > 0 and ${t.unpaidBreakMinutes} >= 0 and ${t.paidBreakMinutes} >= 0 and ${t.unpaidBreakMinutes} <= ${t.elapsedMinutes} and ${t.paidMinutes} >= 0`,
+    ),
+    uniqueIndex('attendance_segments_one_current')
+      .on(t.segmentKey)
+      .where(sql`is_current`),
+    index().on(t.organisationId, t.workerId, t.serviceDate),
+    index().on(t.organisationId, t.batchId),
+  ],
+);
+
+/** Approval or dispute of an exact set of segment revisions. Append-only. */
+export const attendanceApprovals = app.table(
+  'attendance_approvals',
+  {
+    id: id(),
+    organisationId: orgId(),
+    batchId: uuid().notNull(),
+    batchVersion: integer().notNull(),
+    decision: text().notNull(),
+    /** [{ segmentId, segmentKey, revision, paidMinutes, status }] */
+    segments: jsonb().notNull(),
+    discrepancies: jsonb().notNull().default([]),
+    note: text(),
+    decidedBy: uuid().notNull(),
+    decidedAt: ts().notNull(),
+  },
+  (t) => [
+    foreignKey({ columns: [t.organisationId, t.batchId], foreignColumns: [timesheetBatches.organisationId, timesheetBatches.id] }),
+    check('approval_decision_valid', sql`${t.decision} in ('approved','disputed')`),
+  ],
+);
+
+/** Immutable approved-hours export file. Corrections go in a later batch; this one never changes. */
+export const exportBatches = app.table(
+  'export_batches',
+  {
+    id: id(),
+    organisationId: orgId(),
+    branchId: uuid().notNull(),
+    reference: text().notNull(),
+    /** hours | correction (contains reversals of previously exported revisions) */
+    kind: text().notNull(),
+    dateFrom: date({ mode: 'string' }).notNull(),
+    dateTo: date({ mode: 'string' }).notNull(),
+    format: text().notNull(),
+    content: text().notNull(),
+    checksum: text().notNull(),
+    rowCount: integer().notNull(),
+    destination: text().notNull(),
+    createdBy: uuid().notNull(),
+    createdAt: ts().notNull().defaultNow(),
+    /** generated | acknowledged (the receiving payroll team confirmed import) */
+    state: text().notNull().default('generated'),
+    acknowledgedAt: ts(),
+    acknowledgedBy: uuid(),
+    acknowledgementReference: text(),
+  },
+  (t) => [
+    unique().on(t.organisationId, t.id),
+    unique().on(t.organisationId, t.reference),
+    foreignKey({ columns: [t.organisationId, t.branchId], foreignColumns: [branches.organisationId, branches.id] }),
+    check('export_kind_valid', sql`${t.kind} in ('hours','correction')`),
+    check('export_state_valid', sql`${t.state} in ('generated','acknowledged')`),
+  ],
+);
+
+/** Which segment revision went into which export. A revision is exported once and reversed at most once. */
+export const exportRows = app.table(
+  'export_rows',
+  {
+    id: id(),
+    organisationId: orgId(),
+    exportBatchId: uuid().notNull(),
+    segmentId: uuid().notNull(),
+    segmentKey: uuid().notNull(),
+    segmentRevision: integer().notNull(),
+    /** hours | reversal */
+    rowType: text().notNull(),
+    paidMinutes: integer().notNull(),
+  },
+  (t) => [
+    unique().on(t.segmentId, t.rowType),
+    foreignKey({ columns: [t.organisationId, t.exportBatchId], foreignColumns: [exportBatches.organisationId, exportBatches.id] }),
+    foreignKey({ columns: [t.organisationId, t.segmentId], foreignColumns: [attendanceSegments.organisationId, attendanceSegments.id] }),
+    check('export_row_type_valid', sql`${t.rowType} in ('hours','reversal')`),
+  ],
+);

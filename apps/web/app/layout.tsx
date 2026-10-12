@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import './globals.css';
+import { can } from '@cds/auth';
 import { currentActor } from '@/lib/session';
 import { env } from '@/lib/env';
 import { signOut } from './actions';
@@ -18,6 +19,9 @@ const NAV = [
   { href: '/orders/new', label: 'New Order' },
   { href: '/transport', label: 'Transport' },
   { href: '/joinedup', label: 'JoinedUp Queue' },
+  { href: '/attendance', label: 'Attendance', capability: 'attendance.record' as const },
+  { href: '/attendance/rules', label: 'Break Rules', capability: 'policy.manage' as const },
+  { href: '/exports', label: 'Payroll Exports', capability: 'payroll.export' as const },
   { href: '/workers', label: 'Workers' },
   { href: '/handover', label: 'Handover' },
   { href: '/integrations', label: 'Integrations' },
@@ -42,7 +46,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </Link>
             {actor ? (
               <nav aria-label="Main" className="order-last -mx-2 flex w-full min-w-0 items-center gap-1 overflow-x-auto lg:order-none lg:mx-0 lg:w-auto">
-                {NAV.map((n) => (
+                {NAV.filter((n) => !('capability' in n) || can(actor, n.capability!)).map((n) => (
                   <Link key={n.href} href={n.href} className="whitespace-nowrap rounded px-2 py-1 text-sm text-ink-muted hover:bg-surface-2 hover:text-ink">
                     {n.label}
                   </Link>

@@ -117,6 +117,7 @@ const devUsers = (Object.entries(seed.staff) as [string, { authUserId: string }]
       manager: 'Rhiannon Teale',
       compliance: 'Odile Marsh',
       southCoordinator: 'Calum Brisk',
+      payroll: 'Tamsin Hale',
       admin: 'Ada Okafor',
     }[key] ?? key,
   role: key,

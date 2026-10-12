@@ -36,8 +36,12 @@ import {
 } from '@cds/db';
 import { audit, checkVersion, command, enqueue, nextReference, notFound, nowOf, read, translateDbError, type ServiceContext } from './context';
 import { tstzrange } from './lines';
+import { locationProblem, openConflictsFor } from './locations';
 import { loadPolicy } from './orders';
 import { closeTasksByKey, createTask } from './tasks';
+
+/** Assignment states that mean the person is no longer booked for that shift. */
+const ENDED_ASSIGNMENT_STATES = ['cancelled', 'declined', 'superseded', 'no_show'];
 
 export type TripViolation = { code: string; severity: 'error' | 'warning'; message: string; subject?: string };
 
@@ -229,57 +233,14 @@ export async function reviseTrip(
     requireCapability(ctx.actor, 'trip.plan', trip.branchId);
     checkVersion(trip.version, input.expectedVersion);
     if (['cancelled', 'completed'].includes(trip.state)) throw new DomainError('INVALID_STATE', `This journey is ${trip.state}.`);
+    if (trip.state === 'departed') {
+      throw new DomainError('INVALID_STATE', 'This journey is already travelling. Record a disruption first, then re-plan the passengers.');
+    }
     const prev = await currentRevision(tx, trip);
     const revisionNo = trip.currentRevision + 1;
     const { expectedVersion: _v, reason, ...manifest } = input;
     await writeRevision(tx, ctx, trip, revisionNo, manifest, reason);
-    const state = trip.state === 'draft' ? 'draft' : trip.state === 'departed' || trip.state === 'disrupted' ? trip.state : 'proposed';
-    await tx
-      .update(trips)
-      .set({ currentRevision: revisionNo, state, version: trip.version + 1, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) })
-      .where(eq(trips.id, trip.id));
-    await tx
-      .update(messageDrafts)
-      .set({ state: 'superseded', endedAt: nowOf(ctx), endReason: `Journey revision ${revisionNo}`, version: sql`${messageDrafts.version} + 1` })
-      .where(and(eq(messageDrafts.entityType, 'trip'), eq(messageDrafts.entityId, trip.id), inArray(messageDrafts.state, ['draft', 'copied', 'queued'])));
-    if (state === 'proposed' || state === 'departed' || state === 'disrupted') {
-      const driverName = await driverDisplayName(tx, manifest.driverId ?? null);
-      await closeTasksByKey(tx, ctx, `trip_call:${trip.id}`, `Superseded by revision ${revisionNo}`, 'cancelled');
-      await createTask(tx, ctx, {
-        branchId: trip.branchId,
-        type: 'confirm_driver',
-        title: driverName
-          ? `Call ${driverName} to confirm revised journey ${trip.reference} (revision ${revisionNo})`
-          : `Name a driver for journey ${trip.reference}`,
-        entityType: 'trip',
-        entityId: trip.id,
-        ownerMembershipId: trip.ownerMembershipId,
-        priority: 'high',
-        dedupeKey: `trip_call:${trip.id}`,
-      });
-      const sent = await tx
-        .select({ id: messageDrafts.id })
-        .from(messageDrafts)
-        .where(
-          and(
-            eq(messageDrafts.entityType, 'trip'),
-            eq(messageDrafts.entityId, trip.id),
-            inArray(messageDrafts.state, ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged']),
-          ),
-        );
-      if (sent.length) {
-        await createTask(tx, ctx, {
-          branchId: trip.branchId,
-          type: 'send_amendment',
-          title: `Send the updated manifest for ${trip.reference}: the driver has an older version`,
-          entityType: 'trip',
-          entityId: trip.id,
-          ownerMembershipId: trip.ownerMembershipId,
-          priority: 'high',
-          dedupeKey: `trip_amend:${trip.id}:${revisionNo}`,
-        });
-      }
-    }
+    const state = await afterManifestChange(tx, ctx, trip, revisionNo, manifest, 'route or manifest changed');
     await audit(tx, ctx, {
       action: 'trip.revised',
       entityType: 'trip',
@@ -290,6 +251,91 @@ export async function reviseTrip(
     });
     return { revisionNo, version: trip.version + 1, state };
   });
+}
+
+/**
+ * Everything that must follow a new route/manifest revision, shared by every way of changing it:
+ * - acceptance of the old revision no longer counts (state returns to proposed, unless still a draft);
+ * - unsent manifests for the old revision are superseded; anyone already sent one gets a task;
+ * - people no longer on the journey have that leg reopened, so they never look covered by it.
+ */
+async function afterManifestChange(tx: Tx, ctx: ServiceContext, trip: TripRow, revisionNo: number, manifest: TripManifest, what: string): Promise<string> {
+  const state = trip.state === 'draft' ? 'draft' : 'proposed';
+  await tx
+    .update(trips)
+    .set({ currentRevision: revisionNo, state, version: trip.version + 1, updatedAt: nowOf(ctx), updatedBy: actorId(ctx.actor) })
+    .where(eq(trips.id, trip.id));
+  await tx
+    .update(messageDrafts)
+    .set({ state: 'superseded', endedAt: nowOf(ctx), endReason: `Journey revision ${revisionNo}`, version: sql`${messageDrafts.version} + 1` })
+    .where(and(eq(messageDrafts.entityType, 'trip'), eq(messageDrafts.entityId, trip.id), inArray(messageDrafts.state, ['draft', 'copied', 'queued'])));
+  if (state === 'proposed') {
+    const driverName = await driverDisplayName(tx, manifest.driverId ?? null);
+    await closeTasksByKey(tx, ctx, `trip_call:${trip.id}`, `Superseded by revision ${revisionNo}`, 'cancelled');
+    await createTask(tx, ctx, {
+      branchId: trip.branchId,
+      type: 'confirm_driver',
+      title: driverName ? `Call ${driverName} to confirm ${trip.reference} revision ${revisionNo} (${what})` : `Name a driver for journey ${trip.reference}`,
+      entityType: 'trip',
+      entityId: trip.id,
+      ownerMembershipId: trip.ownerMembershipId,
+      priority: 'high',
+      dedupeKey: `trip_call:${trip.id}`,
+    });
+    const sent = await tx
+      .select({ id: messageDrafts.id })
+      .from(messageDrafts)
+      .where(
+        and(
+          eq(messageDrafts.entityType, 'trip'),
+          eq(messageDrafts.entityId, trip.id),
+          inArray(messageDrafts.state, ['manually_marked_sent', 'provider_accepted', 'delivered', 'delivery_unknown', 'acknowledged']),
+        ),
+      );
+    if (sent.length) {
+      await createTask(tx, ctx, {
+        branchId: trip.branchId,
+        type: 'send_amendment',
+        title: `Send the updated manifest for ${trip.reference}: the driver has an older version`,
+        entityType: 'trip',
+        entityId: trip.id,
+        ownerMembershipId: trip.ownerMembershipId,
+        priority: 'high',
+        dedupeKey: `trip_amend:${trip.id}:${revisionNo}`,
+      });
+    }
+  }
+  const stillCovered = new Set(manifest.passengers.map((p) => p.assignmentId).filter((x): x is string => !!x));
+  if (manifest.driverOwnAssignmentId) stillCovered.add(manifest.driverOwnAssignmentId);
+  const covered = await tx
+    .select({ assignmentId: transportRequirements.assignmentId, leg: transportRequirements.leg, name: workers.displayName })
+    .from(transportRequirements)
+    .innerJoin(assignments, eq(assignments.id, transportRequirements.assignmentId))
+    .innerJoin(workers, eq(workers.id, assignments.workerId))
+    .where(eq(transportRequirements.tripId, trip.id));
+  for (const r of covered.filter((c) => !stillCovered.has(c.assignmentId))) {
+    await tx
+      .update(transportRequirements)
+      .set({
+        mode: 'unresolved',
+        tripId: null,
+        arrangementNote: `Removed from journey ${trip.reference} (revision ${revisionNo})`,
+        updatedAt: nowOf(ctx),
+        updatedBy: actorId(ctx.actor),
+      })
+      .where(and(eq(transportRequirements.assignmentId, r.assignmentId), eq(transportRequirements.leg, r.leg)));
+    await createTask(tx, ctx, {
+      branchId: trip.branchId,
+      type: 'replan_transport',
+      title: `${r.name} was removed from journey ${trip.reference}: arrange their ${r.leg} transport and tell them`,
+      entityType: 'assignment',
+      entityId: r.assignmentId,
+      ownerMembershipId: trip.ownerMembershipId,
+      priority: 'high',
+      dedupeKey: `removed:${r.assignmentId}:${r.leg}`,
+    });
+  }
+  return state;
 }
 
 /** Read the current revision back as a manifest input (for incremental edits). */
@@ -335,25 +381,7 @@ export async function addTripPassenger(
     manifest.passengers.push({ workerId: p.workerId, assignmentId: p.assignmentId ?? null, boardStopSeq: p.boardStopSeq, alightStopSeq: p.alightStopSeq });
     const revisionNo = trip.currentRevision + 1;
     await writeRevision(tx, ctx, trip, revisionNo, manifest, 'Passenger added');
-    const state = trip.state === 'draft' ? 'draft' : 'proposed';
-    await tx
-      .update(trips)
-      .set({ currentRevision: revisionNo, state, version: trip.version + 1, updatedAt: nowOf(ctx) })
-      .where(eq(trips.id, trip.id));
-    if (state === 'proposed') {
-      const name = await driverDisplayName(tx, rev.driverId);
-      await closeTasksByKey(tx, ctx, `trip_call:${trip.id}`, `Superseded by revision ${revisionNo}`, 'cancelled');
-      await createTask(tx, ctx, {
-        branchId: trip.branchId,
-        type: 'confirm_driver',
-        title: `Call ${name ?? 'the driver'} to confirm the added passenger on ${trip.reference} (revision ${revisionNo})`,
-        entityType: 'trip',
-        entityId: trip.id,
-        ownerMembershipId: trip.ownerMembershipId,
-        priority: 'high',
-        dedupeKey: `trip_call:${trip.id}`,
-      });
-    }
+    await afterManifestChange(tx, ctx, trip, revisionNo, manifest, 'passenger added');
     await audit(tx, ctx, { action: 'trip.passenger_added', entityType: 'trip', entityId: trip.id, after: { revisionNo, workerId: p.workerId } });
     return { revisionNo, version: trip.version + 1 };
   });
@@ -465,7 +493,10 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
     if (!isSiteStop) continue;
     const loc = locs.find((l) => l.id === s.workLocationId);
     if (!loc) err('SITE_UNVERIFIED', `Stop ${s.seq} (${s.label}) has no work location with a verified entrance.`, `stop:${s.seq}`);
-    else if (!loc.verifiedAt) err('SITE_UNVERIFIED', `The entrance for stop ${s.seq} (${loc.name}) has not been verified.`, `stop:${s.seq}`);
+    else {
+      const problem = locationProblem(loc, null, trip.serviceDate);
+      if (problem) err('SITE_UNVERIFIED', `Stop ${s.seq}: ${problem}`, `stop:${s.seq}`);
+    }
   }
 
   // Passengers' shifts: arrival deadlines (outbound), confirmation state, other journeys.
@@ -476,6 +507,10 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
         .select({
           id: assignments.id,
           state: assignments.state,
+          workerId: assignments.workerId,
+          orderId: assignments.orderId,
+          lineId: assignments.lineId,
+          lineLocationId: orderLines.workLocationId,
           arrivalAt: orderLines.arrivalAt,
           startAt: orderLines.startAt,
           endUnknown: orderLines.endUnknown,
@@ -491,8 +526,23 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
       warn('PASSENGER_UNLINKED', `${name} is not linked to a shift assignment.`, `worker:${p.workerId}`);
       continue;
     }
-    if (!['accepted', 'arrived'].includes(shift.state))
+    if (ENDED_ASSIGNMENT_STATES.includes(shift.state)) {
+      err('PASSENGER_NOT_BOOKED', `${name}'s shift is ${shift.state}; remove them from this journey.`, `worker:${p.workerId}`);
+    } else if (!['accepted', 'arrived'].includes(shift.state)) {
       warn('PASSENGER_NOT_CONFIRMED', `${name} has not confirmed the shift (${shift.state}).`, `worker:${p.workerId}`);
+    }
+    // Outbound passengers get off where they work; return passengers board where they work.
+    const siteStopSeq = trip.legType === 'outbound' ? p.alightStopSeq : trip.legType === 'return' ? p.boardStopSeq : null;
+    const siteStop = siteStopSeq ? stops[siteStopSeq - 1] : undefined;
+    if (siteStop && siteStop.workLocationId !== shift.lineLocationId) {
+      err(
+        'WRONG_DESTINATION',
+        shift.lineLocationId
+          ? `${name}'s shift is at a different entrance than stop ${siteStop.seq} (${siteStop.label}).`
+          : `${name}'s shift has no confirmed entrance yet, so their stop cannot be checked.`,
+        `worker:${p.workerId}`,
+      );
+    }
     if (trip.legType === 'outbound') {
       const due = shift.arrivalAt ?? shift.startAt;
       const at = eta[p.alightStopSeq - 1];
@@ -511,6 +561,13 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
   if (rev.driverOwnAssignmentId) {
     const own = shiftRows.find((s) => s.id === rev.driverOwnAssignmentId);
     const stop = stops.find((s) => s.purpose === 'driver_own_work');
+    if (!own || !driver?.workerId || own.workerId !== driver.workerId) {
+      err('DRIVER_OWN_SHIFT_MISMATCH', "The driver's own shift must be an assignment of the named driver.", 'driver');
+    } else {
+      if (ENDED_ASSIGNMENT_STATES.includes(own.state)) err('PASSENGER_NOT_BOOKED', `The driver's own shift is ${own.state}.`, 'driver');
+      if (stop && stop.workLocationId !== own.lineLocationId)
+        err('WRONG_DESTINATION', "The driver's own-shift stop is not the entrance of their shift.", 'driver');
+    }
     const due = own?.arrivalAt ?? own?.startAt;
     const at = stop ? eta[stop.seq - 1] : null;
     if (due && at && at.getTime() > due.getTime() - bufferMs)
@@ -563,6 +620,14 @@ export async function validateTripRevision(tx: Tx, trip: TripRow, rev: RevisionR
       if (c.assignmentId && c.assignmentId === rev.driverOwnAssignmentId) continue;
       err('RESOURCE_CONFLICT', `${driver.displayName} is booked to work elsewhere during this journey.`, 'driver');
     }
+  }
+  // Nobody travels on facts that are still disputed between sources.
+  const conflicts = await openConflictsFor(
+    tx,
+    shiftRows.map((r) => ({ orderId: r.orderId, lineId: r.lineId })),
+  );
+  if (conflicts.length) {
+    err('SOURCE_CONFLICT', `Resolve the conflicting ${[...new Set(conflicts.map((c) => c.field))].join(', ')} on these passengers' orders before travel.`);
   }
   if (passengers.length === 0 && trip.legType !== 'repositioning') warn('NO_PASSENGERS', 'No passengers on this journey.');
   return v;
@@ -711,11 +776,13 @@ export async function publishTrip(
         ? 'CAPACITY_EXCEEDED'
         : violations.some((x) => x.code === 'PRIVATE_PARTY_CONFLICT')
           ? 'PRIVATE_PARTY_CONFLICT'
-          : violations.some((x) => x.code === 'SITE_UNVERIFIED')
-            ? 'SITE_UNVERIFIED'
-            : violations.some((x) => x.code === 'STALE_CONFIRMATION')
-              ? 'STALE_CONFIRMATION'
-              : 'VALIDATION_FAILED';
+          : violations.some((x) => x.code === 'SOURCE_CONFLICT')
+            ? 'SOURCE_CONFLICT'
+            : violations.some((x) => x.code === 'SITE_UNVERIFIED')
+              ? 'SITE_UNVERIFIED'
+              : violations.some((x) => x.code === 'STALE_CONFIRMATION')
+                ? 'STALE_CONFIRMATION'
+                : 'VALIDATION_FAILED';
       throw new DomainError(code, 'This journey cannot be published yet.', {
         violations: violations.map((x) => ({ code: x.code, message: x.message, subject: x.subject })),
       });

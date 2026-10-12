@@ -22,6 +22,20 @@
       "when": 1791536253633,
       "tag": "0002_queue_and_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791543995655,
+      "tag": "0003_attendance",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791544013120,
+      "tag": "0004_attendance_security",
+      "breakpoints": true
     }
   ]
 }

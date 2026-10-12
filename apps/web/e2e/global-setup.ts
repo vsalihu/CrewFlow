@@ -22,6 +22,7 @@ export default async function globalSetup() {
     JSON.stringify([
       { authUserId: seed.staff.coordinator.authUserId, name: 'Hana Lowell', role: 'coordinator' },
       { authUserId: seed.staff.southCoordinator.authUserId, name: 'Calum Brisk', role: 'southCoordinator' },
+      { authUserId: seed.staff.payroll.authUserId, name: 'Tamsin Hale', role: 'payroll' },
     ]),
   );
 }

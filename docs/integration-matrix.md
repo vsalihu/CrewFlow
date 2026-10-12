@@ -11,4 +11,6 @@ Each adapter declares a status: `disabled`, `manual`, `sandbox`, `connected`, `d
 | Transactional email (Resend) | not configured | Supabase auth emails via provider SMTP                                                                                                    | Notifications                      | Domain verification and provider terms                                                                                   |
 | Maps/routing                 | not configured | Verified pins entered by staff; travel minutes entered by dispatcher                                                                      | Geocoding, route optimisation      | Cost/licence/data review (P3)                                                                                            |
 
+Payroll has no integration: approved hours are exported as a CSV file from `/exports`, downloaded and imported by hand, and the import is recorded with the payroll reference. No file is sent anywhere.
+
 A provider send always goes through the outbox: the draft is checked for currency (revision, contact, assignment state) and marked `delivery_unknown` before the call. Timeouts never trigger an automatic resend.

@@ -2,7 +2,7 @@
 
 Internal operations application for a labour agency: turn changing client requests into accurate worker assignments, explicit transport plans, confirmed communications and reconcilable records. Built from the _CDS Labour Operations System build plan_ (v1.0, 8 October 2026).
 
-**Status:** Phase 0 and the first complete Phase 1 workflow are built and proven against real PostgreSQL with synthetic data. It is **not** production-ready: business policies, real data migration, Supabase/Render provisioning, backups and pilot training are open (see [docs/acceptance-tests.md](docs/acceptance-tests.md) and [docs/decisions.md](docs/decisions.md)).
+**Status:** Phase 0 and the first complete Phase 1 workflow are built and proven against real PostgreSQL with synthetic data. Phase 2 has started with attendance and payroll exports. It is **not** production-ready: business policies, real data migration, Supabase/Render provisioning, backups and pilot training are open (see [docs/acceptance-tests.md](docs/acceptance-tests.md) and [docs/decisions.md](docs/decisions.md)).
 
 ## What works today
 
@@ -12,6 +12,8 @@ Internal operations application for a labour agency: turn changing client reques
 - **Transport:** only explicit driver records can drive (`OWN` is kept as written and never interpreted). Journeys have immutable route/manifest revisions with per-segment capacity, private travel parties, verified destinations and timing checks. Driver acceptance is bound to a revision, and publishing is gated on it. Disruptions and return pickups create owned tasks.
 - **Communications:** recipient-specific drafts tied to a revision. Copied, manually sent, provider-accepted, delivered and acknowledged are separate states. A change withdraws unsent drafts and creates follow-up tasks for anyone already told.
 - **Operations board:** today/tomorrow per branch, with explicit blockers per line and the next concrete action, plus the return queue, tasks with recorded outcomes, duty-based ownership of late orders, and handover with acknowledgement.
+- **Attendance and hours:** arrivals and no-shows against bookings (a no-show opens a replacement task). Client timesheets are entered beside their original text and checked against bookings, sites, readiness, overlaps and the agreed break rule. Someone other than the person who entered them approves the hours. Corrections keep every revision.
+- **Payroll exports:** approved hours become an immutable CSV file with a checksum, downloaded and imported by hand. Later corrections go out as reversal and replacement rows, never by changing a file.
 - **JoinedUp:** a manual entry and verification queue; JoinedUp stays the system of record.
 - **Integrations:** an honest status screen. WhatsApp, email and AI are disabled or manual, and every workflow works without them.
 - **Security:** organisation and branch row-level security for a non-owner runtime role, append-only audit and revisions, idempotency keys, optimistic concurrency, and capability-based permissions.
@@ -49,7 +51,7 @@ apps/worker       outbox processor and pg-boss scheduled jobs
 packages/contracts  Zod command schemas, enums, error codes, capabilities, time handling
 packages/db       Drizzle schema, reviewed SQL migrations (RLS, grants, exclusion constraints)
 packages/auth     identity verification and capability checks
-packages/domain   order, assignment, transport, messaging, outbox and board services
+packages/domain   order, assignment, transport, messaging, attendance/export, outbox and board services
 packages/integrations  adapter contracts and honest status
 packages/test-fixtures synthetic organisation, test databases, seed script
 docs/             architecture, decisions, permissions, runbooks, acceptance tests

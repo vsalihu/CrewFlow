@@ -57,9 +57,9 @@ export function line(seed: Seed, overrides: Partial<LineInput> = {}): LineInput 
 }
 
 /** Create an order with one source and accept every line in full. */
-export async function acceptedOrder(ctx: ServiceContext, seed: Seed, lines: LineInput[], text = 'Synthetic order message') {
+export async function acceptedOrder(ctx: ServiceContext, seed: Seed, lines: LineInput[], text = 'Synthetic order message', clientId = seed.clients.growers) {
   const s = await source(ctx, seed, text);
-  const o = await createOrder(ctx, { branchId: seed.branches.north, clientId: seed.clients.growers, sourceMessageIds: [s.id], lines });
+  const o = await createOrder(ctx, { branchId: seed.branches.north, clientId, sourceMessageIds: [s.id], lines });
   const { orderLines } = await import('@cds/db');
   const { eq, asc } = await import('drizzle-orm');
   const { read } = await import('@cds/domain');

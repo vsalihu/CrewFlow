@@ -20,6 +20,7 @@ import {
   validateTrip,
   type ServiceContext,
 } from '@cds/domain';
+import type { LineInput } from '@cds/contracts';
 import type { Seed } from '@cds/test-fixtures';
 import { acceptedOrder, line, useWorld } from './support';
 
@@ -27,8 +28,14 @@ const world = useWorld();
 const DATE = '2026-10-10';
 const at = (hhmm: string) => `${DATE}T${hhmm}:00+01:00`;
 
-async function confirmedCrew(ctx: ServiceContext, seed: Seed, keys: (keyof Seed['workers'])[], overrides = {}, label: string | null = null) {
-  const o = await acceptedOrder(ctx, seed, [line(seed, { requestedCount: keys.length, ...overrides })]);
+async function confirmedCrew(
+  ctx: ServiceContext,
+  seed: Seed,
+  keys: (keyof Seed['workers'])[],
+  { clientId, ...overrides }: Partial<LineInput> & { clientId?: string } = {},
+  label: string | null = null,
+) {
+  const o = await acceptedOrder(ctx, seed, [line(seed, { requestedCount: keys.length, ...overrides })], 'Synthetic order message', clientId);
   const l = o.lines[0]!;
   const { assignmentIds } = await proposeAssignments(ctx, l.id, { workers: keys.map((k) => ({ workerId: seed.workers[k], rawTransportLabel: label })) });
   for (const id of assignmentIds) {
@@ -189,7 +196,15 @@ describe('transport rules', () => {
     const { seed } = world;
     const d = '2026-10-14';
     const pack = await confirmedCrew(coord, seed, ['mira', 'teodor', 'ralitsa', 'bozhidar'], { serviceDate: d });
-    const cold = await confirmedCrew(coord, seed, ['nevena', 'desislava'], { serviceDate: d, role: 'Packer', arrivalLocal: '07:20', startLocal: '07:30' });
+    const cold = await confirmedCrew(coord, seed, ['nevena', 'desislava'], {
+      clientId: seed.clients.coldStore,
+      siteId: seed.sites.coldStore,
+      workLocationId: seed.locations.coldStoreGate,
+      serviceDate: d,
+      role: 'Packer',
+      arrivalLocal: '07:20',
+      startLocal: '07:30',
+    });
     const own = await confirmedCrew(coord, seed, ['ivo'], { serviceDate: d, role: 'Supervisor', arrivalLocal: '07:00', startLocal: '07:10' });
     const manifest = (minutesToOwn: number) => ({
       driverId: seed.drivers.ivo,

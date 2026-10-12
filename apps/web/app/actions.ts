@@ -37,6 +37,16 @@ import {
   updateExternalBooking,
   amendOrder,
   type ServiceContext,
+  acknowledgeExport,
+  addBreakPolicy,
+  approveTimesheet,
+  correctSegment,
+  createExport,
+  disputeTimesheet,
+  recordArrival,
+  recordTimesheet,
+  voidSegment,
+  type SegmentInput,
 } from '@cds/domain';
 import { DEV_COOKIE, requireContext } from '@/lib/session';
 import { devAuthEnabled, env } from '@/lib/env';
@@ -515,5 +525,116 @@ export async function acknowledgeHandoverAction(formData: FormData) {
   await run('/handover', async (ctx) => {
     await acknowledgeHandover(ctx, req(formData, 'handoverId'));
     return 'Handover acknowledged. These tasks are yours now.';
+  });
+}
+
+// ------------------------------------------------------------------ attendance and exports
+
+function segmentFromForm(f: FormData): SegmentInput {
+  const unpaid = str(f, 'unpaidBreakMinutes');
+  const paid = str(f, 'paidBreakMinutes');
+  return {
+    workerId: str(f, 'workerId'),
+    rawName: req(f, 'rawName'),
+    startLocal: req(f, 'startLocal').slice(0, 5),
+    endLocal: req(f, 'endLocal').slice(0, 5),
+    endDayOffset: str(f, 'endNextDay') ? 1 : 0,
+    unpaidBreakMinutes: unpaid === null ? null : Number.parseInt(unpaid, 10),
+    paidBreakMinutes: paid === null ? null : Number.parseInt(paid, 10),
+    note: str(f, 'note'),
+  };
+}
+
+export async function arrivalAction(formData: FormData) {
+  const back = req(formData, 'back');
+  await run(back, async (ctx) => {
+    const status = req(formData, 'status') as 'arrived' | 'no_show';
+    await recordArrival(ctx, req(formData, 'assignmentId'), { status, expectedVersion: int(formData, 'version'), note: str(formData, 'note') });
+    return status === 'arrived' ? 'Arrival recorded.' : 'No-show recorded. A replacement task and a case were created.';
+  });
+}
+
+export async function recordTimesheetAction(formData: FormData) {
+  const back = `/attendance/timesheets/new?${new URLSearchParams({ branch: req(formData, 'branchId'), date: req(formData, 'serviceDate') }).toString()}`;
+  await run(back, async (ctx) => {
+    const entries = JSON.parse(req(formData, 'entries')) as SegmentInput[];
+    const [clientId, siteId] = req(formData, 'clientSite').split('|');
+    const r = await recordTimesheet(ctx, {
+      branchId: req(formData, 'branchId'),
+      clientId: clientId!,
+      siteId: siteId!,
+      serviceDate: req(formData, 'serviceDate'),
+      supervisorName: req(formData, 'supervisorName'),
+      rawText: req(formData, 'rawText'),
+      receivedAt: localToIso(req(formData, 'receivedAt')),
+      entries,
+    });
+    return { notice: `Timesheet ${r.reference} recorded. Check the listed items, then someone else approves it.`, goto: `/attendance/timesheets/${r.id}` };
+  });
+}
+
+export async function correctSegmentAction(formData: FormData) {
+  const back = `/attendance/timesheets/${req(formData, 'batchId')}`;
+  await run(back, async (ctx) => {
+    const r = await correctSegment(ctx, req(formData, 'segmentId'), { ...segmentFromForm(formData), reason: req(formData, 'reason') });
+    return `Correction saved as revision ${r.revision}. The original entry is kept.`;
+  });
+}
+
+export async function voidSegmentAction(formData: FormData) {
+  const back = `/attendance/timesheets/${req(formData, 'batchId')}`;
+  await run(back, async (ctx) => {
+    await voidSegment(ctx, req(formData, 'segmentId'), req(formData, 'reason'));
+    return 'Entry voided. It stays in the history with your reason.';
+  });
+}
+
+export async function approveTimesheetAction(formData: FormData) {
+  const back = `/attendance/timesheets/${req(formData, 'batchId')}`;
+  await run(back, async (ctx) => {
+    await approveTimesheet(ctx, req(formData, 'batchId'), { expectedVersion: int(formData, 'version'), justification: str(formData, 'justification') });
+    return 'Timesheet approved. These exact entries can now be exported.';
+  });
+}
+
+export async function disputeTimesheetAction(formData: FormData) {
+  const back = `/attendance/timesheets/${req(formData, 'batchId')}`;
+  await run(back, async (ctx) => {
+    await disputeTimesheet(ctx, req(formData, 'batchId'), { expectedVersion: int(formData, 'version'), note: req(formData, 'note') });
+    return 'Timesheet marked as disputed. A task was created to resolve it.';
+  });
+}
+
+export async function createExportAction(formData: FormData) {
+  const back = `/exports?${new URLSearchParams({ branch: req(formData, 'branchId') }).toString()}`;
+  await run(back, async (ctx) => {
+    const r = await createExport(ctx, { branchId: req(formData, 'branchId'), dateFrom: req(formData, 'dateFrom'), dateTo: req(formData, 'dateTo') });
+    return `Export ${r.reference} created (${r.kind}, ${r.rowCount} rows). Download it and record the payroll reference once imported.`;
+  });
+}
+
+export async function acknowledgeExportAction(formData: FormData) {
+  const back = `/exports?${new URLSearchParams({ branch: req(formData, 'branchId') }).toString()}`;
+  await run(back, async (ctx) => {
+    await acknowledgeExport(ctx, req(formData, 'exportId'), req(formData, 'reference'));
+    return 'Payroll import recorded.';
+  });
+}
+
+export async function addBreakPolicyAction(formData: FormData) {
+  await run('/attendance/rules', async (ctx) => {
+    // One select carries "clientId|siteId" (siteId empty = every site of the client).
+    const [clientId = '', siteId = ''] = req(formData, 'scope').split('|');
+    const r = await addBreakPolicy(ctx, {
+      clientId,
+      siteId: siteId || null,
+      effectiveFrom: req(formData, 'effectiveFrom'),
+      unpaidBreakMinutes: int(formData, 'unpaidBreakMinutes'),
+      unpaidAfterMinutes: int(formData, 'unpaidAfterMinutes'),
+      paidBreakMinutes: int(formData, 'paidBreakMinutes'),
+      agreementReference: req(formData, 'agreementReference'),
+      note: str(formData, 'note'),
+    });
+    return `Break rule version ${r.policyVersion} added. Earlier timesheets keep the rule that applied to them.`;
   });
 }

@@ -23,6 +23,7 @@ import {
   type Tx,
 } from '@cds/db';
 import { audit, checkVersion, command, enqueue, notFound, nowOf, type ServiceContext } from './context';
+import { locationProblem, locationUsable, openConflictsFor } from './locations';
 import { TEMPLATE_VERSIONS, amendment, cancellation, driverManifest, workerBooking, workerOffer, type ShiftFacts } from './templates';
 import { closeTasksByKey } from './tasks';
 
@@ -69,7 +70,8 @@ async function shiftFacts(tx: Tx, assignmentId: string) {
     .from(transportRequirements)
     .leftJoin(trips, eq(trips.id, transportRequirements.tripId))
     .where(eq(transportRequirements.assignmentId, assignmentId));
-  const verified = !!row.loc?.verifiedAt;
+  // Only an entrance that belongs to this site, is verified and is valid on the date is ever sent.
+  const verified = locationUsable(row.loc, row.l.siteId, row.l.serviceDate);
   const facts: ShiftFacts = {
     reference: row.o.reference,
     lineNo: row.l.lineNo,
@@ -229,10 +231,13 @@ async function draftManifest(tx: Tx, ctx: ServiceContext, tripId: string) {
     .leftJoin(workLocations, eq(workLocations.id, tripStops.workLocationId))
     .where(eq(tripStops.tripRevisionId, rev!.id))
     .orderBy(asc(tripStops.seq));
+  // Any stop given as a work location (drop-offs, and site pickups on return legs) must be usable.
   for (const { s, loc } of stops) {
-    if (s.purpose !== 'pickup' && s.workLocationId && !loc?.verifiedAt)
-      throw new DomainError('SITE_UNVERIFIED', `Verify the location for stop ${s.seq} (${s.label}) before sending it to the driver.`);
+    if (!s.workLocationId) continue;
+    const problem = locationProblem(loc, null, trip.serviceDate);
+    if (problem) throw new DomainError('SITE_UNVERIFIED', `Stop ${s.seq} (${s.label}): ${problem} Fix it before sending it to the driver.`);
   }
+  await assertNoConflictsForTrip(tx, rev!.id);
   const ps = await tx
     .select({ p: tripPassengers, name: workers.displayName })
     .from(tripPassengers)
@@ -255,7 +260,7 @@ async function draftManifest(tx: Tx, ctx: ServiceContext, tripId: string) {
         purpose: s.purpose,
         label: s.label,
         eta: running,
-        pin: loc?.verifiedAt ? loc.pinText : null,
+        pin: loc && locationUsable(loc, null, trip.serviceDate) ? loc.pinText : null,
         board: ps.filter(({ p }) => p.boardStopSeq === s.seq).map(({ name }) => name),
         alight: ps.filter(({ p }) => p.alightStopSeq === s.seq).map(({ name }) => name),
       };
@@ -323,6 +328,36 @@ export async function assertDraftCurrent(tx: Tx, d: DraftRow): Promise<void> {
   if (d.template !== 'cancellation' && d.assignmentId) {
     const [a] = await tx.select({ state: assignments.state }).from(assignments).where(eq(assignments.id, d.assignmentId));
     if (a && ['cancelled', 'declined', 'superseded'].includes(a.state)) throw new DomainError('STALE_CONFIRMATION', `The assignment is ${a.state}.`);
+  }
+  // A conflict raised after drafting does not change the version, so check it again here:
+  // nothing but a cancellation goes out while sources disagree.
+  if (d.template !== 'cancellation') {
+    if (d.entityType === 'order_line') {
+      const [l] = await tx.select({ orderId: orderLines.orderId }).from(orderLines).where(eq(orderLines.id, d.entityId));
+      if (l) await assertNoOpenConflicts(tx, l.orderId, d.entityId);
+    } else if (d.entityType === 'trip') {
+      const [rev] = await tx
+        .select({ id: tripRevisions.id })
+        .from(tripRevisions)
+        .innerJoin(trips, and(eq(trips.id, tripRevisions.tripId), eq(trips.currentRevision, tripRevisions.revisionNo)))
+        .where(eq(trips.id, d.entityId));
+      if (rev) await assertNoConflictsForTrip(tx, rev.id);
+    }
+  }
+}
+
+async function assertNoConflictsForTrip(tx: Tx, tripRevisionId: string): Promise<void> {
+  const lines = await tx
+    .select({ orderId: assignments.orderId, lineId: assignments.lineId })
+    .from(tripPassengers)
+    .innerJoin(assignments, eq(assignments.id, tripPassengers.assignmentId))
+    .where(eq(tripPassengers.tripRevisionId, tripRevisionId));
+  const open = await openConflictsFor(tx, lines);
+  if (open.length) {
+    throw new DomainError(
+      'SOURCE_CONFLICT',
+      `Resolve the conflicting ${[...new Set(open.map((c) => c.field))].join(', ')} on these passengers' orders before sending the manifest.`,
+    );
   }
 }
 

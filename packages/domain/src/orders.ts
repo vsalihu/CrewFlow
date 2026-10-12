@@ -49,6 +49,7 @@ import { LINE_FIELDS, MATERIAL_LINE_FIELDS, computeLineTimes, hhmm, lineFieldsFr
 import { policyFrom, type OperatingPolicy } from './policy';
 import { closeTasksByKey, createTask, onDuty } from './tasks';
 import { impactTokenSecret } from './config';
+import { assertLocationsMatchSites } from './locations';
 
 type OrderRow = typeof orders.$inferSelect;
 type LineRow = typeof orderLines.$inferSelect;
@@ -95,11 +96,13 @@ export function computeUrgency(now: Date, earliestArrival: Date | null, policy: 
 async function assertSourcesExist(tx: Tx, ids: readonly string[], branchId: string): Promise<void> {
   if (!ids.length) return;
   const rows = await tx
-    .select({ id: sourceMessages.id, branchId: sourceMessages.branchId })
+    .select({ id: sourceMessages.id, branchId: sourceMessages.branchId, kind: sourceMessages.kind })
     .from(sourceMessages)
     .where(inArray(sourceMessages.id, [...ids]));
   if (rows.length !== new Set(ids).size) throw new DomainError('VALIDATION_FAILED', 'A linked source message was not found.');
   if (rows.some((r) => r.branchId !== branchId)) throw new DomainError('VALIDATION_FAILED', 'Source messages must belong to the same branch as the order.');
+  // A timesheet reports hours worked; it is never evidence for a request or amendment (AT30).
+  if (rows.some((r) => r.kind === 'timesheet')) throw new DomainError('VALIDATION_FAILED', 'A timesheet cannot be used as the source of an order.');
 }
 
 async function assertSitesBelongToClient(tx: Tx, clientId: string, siteIds: (string | null)[]): Promise<void> {
@@ -203,6 +206,10 @@ export async function createOrder(
       tx,
       input.clientId,
       input.lines.map((l) => l.siteId ?? null),
+    );
+    await assertLocationsMatchSites(
+      tx,
+      input.lines.map((l) => ({ siteId: l.siteId ?? null, workLocationId: l.workLocationId ?? null })),
     );
     const sources = await tx.select({ receivedAt: sourceMessages.receivedAt }).from(sourceMessages).where(inArray(sourceMessages.id, input.sourceMessageIds));
     const receivedAt = sources.map((s) => s.receivedAt).sort((a, b) => a.getTime() - b.getTime())[0] ?? nowOf(ctx);
@@ -330,6 +337,12 @@ function planLineChange(line: LineRow, change: LineChange): PlannedLineChange {
       (next as Record<string, unknown>)[field] = value;
     }
   }
+  // An entrance belongs to one site: moving the line to another site without naming a new
+  // entrance clears the old one, so it can never be sent to workers for the wrong place.
+  if (changed.some((c) => c.field === 'siteId') && !('workLocationId' in change) && next.workLocationId !== null) {
+    changed.push({ lineId: line.id, lineNo: line.lineNo, field: 'workLocationId', from: next.workLocationId, to: null });
+    next.workLocationId = null;
+  }
   const material = changed.some((c) => (MATERIAL_LINE_FIELDS as readonly string[]).includes(c.field));
   return { line, next, changed, material };
 }
@@ -352,6 +365,10 @@ async function computeImpact(tx: Tx, order: OrderRow, input: Amendment): Promise
     plans.push(plan);
   }
   for (const l of input.addLines) computeLineTimes(lineFieldsFromInput(l));
+  await assertLocationsMatchSites(tx, [
+    ...plans.map((p) => ({ siteId: p.next.siteId, workLocationId: p.next.workLocationId })),
+    ...input.addLines.map((l) => ({ siteId: l.siteId ?? null, workLocationId: l.workLocationId ?? null })),
+  ]);
 
   const materialLineIds = plans.filter((p) => p.material).map((p) => p.line.id);
   const touchedLineIds = plans.map((p) => p.line.id);

@@ -94,7 +94,7 @@ export type TaskState = (typeof TASK_STATES)[number];
 export const TASK_PRIORITIES = ['normal', 'high', 'urgent'] as const;
 export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 
-export const SOURCE_KINDS = ['pasted_message', 'phone_note', 'email', 'portal', 'import'] as const;
+export const SOURCE_KINDS = ['pasted_message', 'phone_note', 'email', 'portal', 'import', 'timesheet'] as const;
 export type SourceKind = (typeof SOURCE_KINDS)[number];
 
 export const SOURCE_LINK_RELATIONS = ['request', 'amendment', 'confirmation', 'dispute', 'cancellation'] as const;

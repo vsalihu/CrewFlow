@@ -23,6 +23,7 @@ import {
   type Tx,
 } from '@cds/db';
 import { notFound, read, type ServiceContext } from './context';
+import { locationProblem } from './locations';
 import { describeIssues, evaluateReadiness } from './readiness';
 
 export type Blocker = { code: string; message: string };
@@ -57,7 +58,7 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
   const out = new Map<string, LineStatus>();
   if (!lineIds.length) return out;
   const lines = await tx
-    .select({ l: orderLines, clientId: orders.clientId, requiresExternal: clients.requiresExternalBooking, locVerified: workLocations.verifiedAt })
+    .select({ l: orderLines, clientId: orders.clientId, requiresExternal: clients.requiresExternalBooking, loc: workLocations })
     .from(orderLines)
     .innerJoin(orders, eq(orders.id, orderLines.orderId))
     .innerJoin(clients, eq(clients.id, orders.clientId))
@@ -95,7 +96,8 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
     .from(orderConflicts)
     .where(and(eq(orderConflicts.state, 'open'), inArray(orderConflicts.orderId, [...new Set(lines.map((x) => x.l.orderId))])));
 
-  for (const { l, clientId, requiresExternal, locVerified } of lines) {
+  for (const { l, clientId, requiresExternal, loc } of lines) {
+    const locProblem = locationProblem(loc, l.siteId, l.serviceDate);
     const mine = as.filter((a) => a.lineId === l.id);
     const confirmedA = mine.filter((a) => (a.state === 'accepted' && a.acceptedLineVersion === l.lineVersion) || a.state === 'arrived');
     const proposed = mine.filter((a) => a.state === 'proposed' || a.state === 'offered').length;
@@ -108,7 +110,7 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
     if (l.lineState === 'cancelled') blockers.push({ code: 'CANCELLED', message: 'Line cancelled.' });
     for (const c of lineConflicts) blockers.push({ code: 'SOURCE_CONFLICT', message: `Conflicting ${c.field} needs resolving.` });
     if (!l.siteId) blockers.push({ code: 'SITE_PENDING', message: 'Site not confirmed.' });
-    else if (!l.workLocationId || !locVerified) blockers.push({ code: 'SITE_UNVERIFIED', message: 'Site entrance/location not verified.' });
+    else if (locProblem) blockers.push({ code: 'SITE_UNVERIFIED', message: `Site entrance: ${locProblem}` });
     if (!l.startAt) blockers.push({ code: 'START_UNRESOLVED', message: 'Start time not confirmed.' });
     if (accepted === null) blockers.push({ code: 'NOT_ACCEPTED', message: 'Agency has not decided how many it accepts.' });
     const confirmationShortfall = Math.max(0, (accepted ?? 0) - confirmed);
@@ -195,7 +197,7 @@ export async function lineStatuses(tx: Tx, lineIds: string[]): Promise<Map<strin
       externalPending,
       externalVerified,
       openConflicts: lineConflicts.length,
-      siteVerified: !!locVerified,
+      siteVerified: !locProblem,
       ready: blockers.length === 0,
       blockers,
       summary: parts.join('; '),

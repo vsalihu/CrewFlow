@@ -14,3 +14,5 @@ export * from './operations';
 export * from './handover';
 export * from './outbox';
 export * from './views';
+export * from './locations';
+export * from './attendance';

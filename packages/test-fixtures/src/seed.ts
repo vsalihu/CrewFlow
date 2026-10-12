@@ -27,6 +27,7 @@ import {
   workerSkills,
   workers,
   type Db,
+  breakPolicies,
 } from '@cds/db';
 
 export type Seed = Awaited<ReturnType<typeof seedSyntheticOrganisation>>;
@@ -71,6 +72,7 @@ export async function seedSyntheticOrganisation(db: Db, opts: { name?: string } 
     manager: { name: 'Rhiannon Teale', roles: ['branch_manager'], branch: north!.id },
     compliance: { name: 'Odile Marsh', roles: ['compliance_officer'], branch: north!.id },
     southCoordinator: { name: 'Calum Brisk', roles: ['coordinator'], branch: south!.id },
+    payroll: { name: 'Tamsin Hale', roles: ['payroll_operator'], branch: north!.id },
   } as const;
   const staff: Record<keyof typeof people | 'admin', { membershipId: string; authUserId: string }> = {} as never;
   for (const [key, p] of Object.entries(people)) {
@@ -301,6 +303,31 @@ export async function seedSyntheticOrganisation(db: Db, opts: { name?: string } 
   await db.insert(travelPartyMembers).values([
     { organisationId, partyId: couple!.id, workerId: w.stoyko },
     { organisationId, partyId: couple!.id, workerId: w.velina },
+  ]);
+
+  // Break rules from (synthetic) agreements: the growers pay breaks, the cold store deducts
+  // 30 unpaid minutes once a shift reaches 6 hours.
+  await db.insert(breakPolicies).values([
+    {
+      organisationId,
+      clientId: growers!.id,
+      policyVersion: 1,
+      effectiveFrom: '2026-01-01',
+      unpaidBreakMinutes: 0,
+      unpaidAfterMinutes: 0,
+      paidBreakMinutes: 30,
+      agreementReference: 'SYN-AGR-GROWERS-1',
+    },
+    {
+      organisationId,
+      clientId: coldStore!.id,
+      policyVersion: 1,
+      effectiveFrom: '2026-01-01',
+      unpaidBreakMinutes: 30,
+      unpaidAfterMinutes: 360,
+      paidBreakMinutes: 0,
+      agreementReference: 'SYN-AGR-COLD-1',
+    },
   ]);
 
   await db.insert(integrationSettings).values([
